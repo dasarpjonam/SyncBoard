@@ -17,12 +17,17 @@ Run the local Vite and Electron instances concurrently:
 npm run dev
 ```
 
-### Build Executable
-To package the app into a final desktop application:
+### Package and Deploy Executable
+To package the app into a deployable final desktop application (installers for Windows, macOS, and Linux):
 ```bash
 npm run dist
 ```
-The compiled executables will be generated in the `dist-electron` folder.
+The compiled executables and installers will be generated in the `dist-electron` folder.
+- **Windows**: Produces an `.exe` installer (NSIS) and a portable `.zip` file.
+- **macOS**: Produces a `.dmg` installer and a `.zip` file.
+- **Linux**: Produces an `.AppImage` portable executable and a `.deb` package.
+
+Once generated, you can deploy these artifacts directly to your users or upload them as GitHub releases.
 
 ### Run Tests
 To execute the unit test suite:
