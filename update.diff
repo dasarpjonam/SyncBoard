@@ -1,0 +1,58 @@
+<<<<<<< SEARCH
+  const [typesStr, setTypesStr] = useState(config.types.join(', '));
+  const [statusesStr, setStatusesStr] = useState(config.statuses.join(', '));
+
+  const handleSaveWorkspace = () => {
+    saveConfig({
+      ...config,
+      types: typesStr.split(',').map(s => s.trim()).filter(Boolean),
+      statuses: statusesStr.split(',').map(s => s.trim()).filter(Boolean),
+    });
+=======
+  const [typesStr, setTypesStr] = useState(config.types.join(', '));
+  const [statusesStr, setStatusesStr] = useState(config.statuses.join(', '));
+  const [usersStr, setUsersStr] = useState((config.users || []).join(', '));
+
+  const handleSaveWorkspace = () => {
+    saveConfig({
+      ...config,
+      types: typesStr.split(',').map(s => s.trim()).filter(Boolean),
+      statuses: statusesStr.split(',').map(s => s.trim()).filter(Boolean),
+      users: usersStr.split(',').map(s => s.trim()).filter(Boolean),
+    });
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Statuses (comma separated)</label>
+            <input
+              type="text"
+              value={statusesStr}
+              onChange={e => setStatusesStr(e.target.value)}
+              className="w-full p-2 border rounded"
+            />
+          </div>
+
+          <button onClick={handleSaveWorkspace} className="px-4 py-2 bg-gray-800 text-white rounded">
+=======
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Statuses (comma separated)</label>
+            <input
+              type="text"
+              value={statusesStr}
+              onChange={e => setStatusesStr(e.target.value)}
+              className="w-full p-2 border rounded"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Users (comma separated)</label>
+            <input
+              type="text"
+              value={usersStr}
+              onChange={e => setUsersStr(e.target.value)}
+              className="w-full p-2 border rounded"
+            />
+          </div>
+
+          <button onClick={handleSaveWorkspace} className="px-4 py-2 bg-gray-800 text-white rounded">
+>>>>>>> REPLACE
