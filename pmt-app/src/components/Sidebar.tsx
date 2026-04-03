@@ -15,8 +15,9 @@ export function Sidebar() {
 
   return (
     <div className="w-64 bg-gray-900 text-white flex flex-col h-full">
-      <div className="p-4 text-xl font-bold border-b border-gray-800">
-        PM Tool
+      <div className="p-4 text-xl font-bold border-b border-gray-800 flex items-center gap-2">
+        <img src="/icon.svg" alt="Syncboard Logo" className="w-6 h-6" />
+        Syncboard
       </div>
 
       <div className="p-4 flex flex-col gap-2 flex-grow">

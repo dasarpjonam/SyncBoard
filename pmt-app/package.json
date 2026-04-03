@@ -13,8 +13,8 @@
     "test": "vitest run"
   },
   "build": {
-    "appId": "com.pmtapp.desktop",
-    "productName": "Program Management Tool",
+    "appId": "com.syncboard.desktop",
+    "productName": "Syncboard",
     "directories": {
       "output": "dist-electron"
     },

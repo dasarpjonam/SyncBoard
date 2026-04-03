@@ -1,15 +1,34 @@
-# React + TypeScript + Vite
+# Syncboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An offline-first, standalone program management tool with local AI integration built using Electron, React, and Vite. Data is persisted securely in local files using Markdown and YAML configuration.
 
-Currently, two official plugins are available:
+## Setup and Execution
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Make sure Node.js is installed.
+2. Clone or download the repository, then change directory to `pmt-app`.
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-## React Compiler
+### Start Development Server
+Run the local Vite and Electron instances concurrently:
+```bash
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Build Executable
+To package the app into a final desktop application:
+```bash
+npm run dist
+```
+The compiled executables will be generated in the `dist-electron` folder.
+
+### Run Tests
+To execute the unit test suite:
+```bash
+npm run test
+```
 
 ## Expanding the ESLint configuration
 
