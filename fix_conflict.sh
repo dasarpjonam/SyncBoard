@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > pmt-app/src/components/ChatInterface.tsx
 import React, { useRef, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { useWorkspace } from '../store/WorkspaceContext';
@@ -165,3 +166,4 @@ You can help the user organize tasks, create new items, or update existing ones.
     </div>
   );
 }
+INNER_EOF

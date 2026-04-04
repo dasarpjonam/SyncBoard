@@ -1,5 +1,3 @@
-import { WorkItem } from '../types';
-
 export const defineTools = () => {
   // Define tools for Google Gemini REST API.
   return [
