@@ -1,5 +1,3 @@
-import { WorkItem } from '../types';
-
 export const defineTools = () => {
   // Since we are interacting directly with OpenAI, we can define the schema
   // for function calling (tools) to allow the LLM to manage tasks.
