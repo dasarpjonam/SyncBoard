@@ -13,9 +13,13 @@ function AppContent() {
 
   useEffect(() => {
     // If we have a saved path, load it on startup
-    if (workspacePath) {
-      loadWorkspace(workspacePath);
-    }
+    const initWorkspace = async () => {
+      if (workspacePath) {
+        await window.electronAPI.setWorkspace(workspacePath);
+        loadWorkspace(workspacePath);
+      }
+    };
+    initWorkspace();
   }, []);
 
   useEffect(() => {

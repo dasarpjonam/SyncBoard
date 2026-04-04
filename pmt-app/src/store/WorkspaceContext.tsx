@@ -65,6 +65,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
   const loadWorkspace = async (path: string) => {
     try {
+      await window.electronAPI.setWorkspace(path);
       setWorkspacePathPersist(path);
 
       // Load config
