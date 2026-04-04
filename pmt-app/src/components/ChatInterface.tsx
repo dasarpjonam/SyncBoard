@@ -62,10 +62,12 @@ You can help the user organize tasks, create new items, or update existing ones.
 
       // Handle tool calls locally
       if (message.tool_calls) {
-        for (const toolCall of message.tool_calls) {
+        const { serializeMarkdownItem } = await import('../lib/markdown');
+
+        const results = await Promise.all(message.tool_calls.map(async (toolCall, index) => {
           if (toolCall.function.name === 'create_work_item') {
             const args = JSON.parse(toolCall.function.arguments);
-            const id = `ITEM-${Date.now()}`;
+            const id = `ITEM-${Date.now()}-${index}`;
             const newItem = {
               id,
               title: args.title,
@@ -78,13 +80,11 @@ You can help the user organize tasks, create new items, or update existing ones.
               fileName: `${id}.md`,
             };
 
-            // Wait for dynamic import of serialization
-            const { serializeMarkdownItem } = await import('../lib/markdown');
             const content = serializeMarkdownItem(newItem);
             await window.electronAPI.writeFile(`${workspacePath}/${newItem.fileName}`, content);
             addItem(newItem);
 
-            message.content = `I created a new ${newItem.type}: **${newItem.title}** (ID: ${newItem.id})`;
+            return `I created a new ${newItem.type}: **${newItem.title}** (ID: ${newItem.id})`;
           } else if (toolCall.function.name === 'update_work_item') {
             const args = JSON.parse(toolCall.function.arguments);
             const existingItem = items.find(i => i.id === args.id);
@@ -94,15 +94,20 @@ You can help the user organize tasks, create new items, or update existing ones.
                 ...args,
                 updatedAt: new Date().toISOString()
               };
-              const { serializeMarkdownItem } = await import('../lib/markdown');
               const content = serializeMarkdownItem(updatedItem);
               await window.electronAPI.writeFile(`${workspacePath}/${updatedItem.fileName}`, content);
               updateItem(updatedItem);
-              message.content = `I updated item **${args.id}** successfully.`;
+              return `I updated item **${args.id}** successfully.`;
             } else {
-              message.content = `I couldn't find item with ID ${args.id}.`;
+              return `I couldn't find item with ID ${args.id}.`;
             }
           }
+          return null;
+        }));
+
+        const toolResponses = results.filter(Boolean).join('\n');
+        if (toolResponses) {
+          message.content = toolResponses;
         }
       }
 
