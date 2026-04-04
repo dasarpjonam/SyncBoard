@@ -29,14 +29,14 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [workspacePath, setWorkspacePath] = useState<string | null>(localStorage.getItem('workspacePath'));
   const [items, setItems] = useState<WorkItem[]>([]);
   const [config, setConfig] = useState<WorkspaceConfig>(DEFAULT_CONFIG);
-  const [apiKey, setApiKeyState] = useState<string | null>(localStorage.getItem('openaiApiKey'));
+  const [apiKey, setApiKeyState] = useState<string | null>(localStorage.getItem('geminiApiKey'));
 
   const setApiKey = (key: string | null) => {
     setApiKeyState(key);
     if (key) {
-      localStorage.setItem('openaiApiKey', key);
+      localStorage.setItem('geminiApiKey', key);
     } else {
-      localStorage.removeItem('openaiApiKey');
+      localStorage.removeItem('geminiApiKey');
     }
   };
 
@@ -65,6 +65,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
   const loadWorkspace = async (path: string) => {
     try {
+      await window.electronAPI.setWorkspace(path);
       setWorkspacePathPersist(path);
 
       // Load config

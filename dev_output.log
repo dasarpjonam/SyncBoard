@@ -1,0 +1,15 @@
+
+> pmt-app@0.0.0 dev
+> concurrently -k "cross-env NODE_ENV=development vite" "wait-on tcp:5173 && cross-env NODE_ENV=development electron ."
+
+[0]
+[0]   VITE v8.0.3  ready in 467 ms
+[0]
+[0]   ➜  Local:   http://localhost:5173/
+[0]   ➜  Network: use --host to expose
+[1] [94728:0404/054052.079495:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:256] Missing X server or $DISPLAY
+[1] [94728:0404/054052.079661:ERROR:ui/aura/env.cc:246] The platform failed to initialize.  Exiting.
+[1] /app/pmt-app/node_modules/electron/dist/electron exited with signal SIGSEGV
+[1] wait-on tcp:5173 && cross-env NODE_ENV=development electron . exited with code 1
+--> Sending SIGTERM to other processes..
+[0] cross-env NODE_ENV=development vite exited with code SIGTERM
