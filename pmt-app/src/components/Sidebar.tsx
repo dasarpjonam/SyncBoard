@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Settings, FolderOpen } from 'lucide-react';
+import { LayoutDashboard, Settings, FolderOpen, FolderPlus } from 'lucide-react';
 import { useWorkspace } from '../store/WorkspaceContext';
 
 export function Sidebar() {
@@ -10,6 +10,13 @@ export function Sidebar() {
     const path = await window.electronAPI.openDirectory();
     if (path) {
       await loadWorkspace(path);
+    }
+  };
+
+  const handleSetupNewWorkspace = async () => {
+    const path = await window.electronAPI.openDirectory();
+    if (path) {
+      await loadWorkspace(path); // `loadWorkspace` already handles default config creation if `config.yaml` is missing
     }
   };
 
@@ -45,6 +52,13 @@ export function Sidebar() {
         >
           <FolderOpen size={20} />
           {workspacePath ? 'Change Workspace' : 'Open Workspace'}
+        </button>
+        <button
+          onClick={handleSetupNewWorkspace}
+          className="flex items-center gap-2 p-2 w-full rounded hover:bg-gray-800 text-left text-sm mt-1"
+        >
+          <FolderPlus size={20} />
+          Setup New Workspace
         </button>
         {workspacePath && (
           <div className="mt-2 text-xs text-gray-400 truncate px-2" title={workspacePath}>
