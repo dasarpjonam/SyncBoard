@@ -2,6 +2,7 @@
 if (!window.electronAPI) {
   window.electronAPI = {
     openDirectory: async () => '/tmp/syncboard-workspace',
+    setWorkspace: async () => true,
     readDir: async () => ['TASK-1.md', 'BUG-2.md', 'FEAT-3.md'],
     readFile: async (path) => {
       if (path.includes('config.yaml')) {
