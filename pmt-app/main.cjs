@@ -70,22 +70,75 @@ app.whenReady().then(() => {
   ipcMain.handle('fs:setWorkspace', async (event, dirPath) => {
     if (authorizedPaths.has(dirPath)) {
       currentWorkspacePath = dirPath;
+      
+      // Ensure items directory exists
+      const itemsDir = path.join(dirPath, 'items');
+      if (!fs.existsSync(itemsDir)) {
+        fs.mkdirSync(itemsDir, { recursive: true });
+      }
+      
       return true;
     }
     return false;
   });
 
-  ipcMain.handle('fs:readDir', async (event, dirPath) => {
+  ipcMain.handle('fs:readDir', async (event, dirPath, recursive = false) => {
     try {
       if (!currentWorkspacePath || !isPathInside(currentWorkspacePath, dirPath) && currentWorkspacePath !== dirPath) {
         throw new Error('Unauthorized directory access');
       }
       if (!fs.existsSync(dirPath)) return [];
-      const files = fs.readdirSync(dirPath);
-      return files.filter((f) => f.endsWith('.md'));
+      
+      if (!recursive) {
+        // Non-recursive: return all files and directories
+        const files = fs.readdirSync(dirPath);
+        return files;
+      } else {
+        // Recursive: scan all subdirectories for markdown files
+        const results = [];
+        
+        function scanDir(dir) {
+          const files = fs.readdirSync(dir);
+          
+          for (const file of files) {
+            // Skip hidden files and config
+            if (file.startsWith('.') || file === 'config.yaml') {
+              continue;
+            }
+            
+            const fullPath = path.join(dir, file);
+            const stat = fs.statSync(fullPath);
+            
+            if (stat.isDirectory()) {
+              // Recursively scan subdirectory
+              scanDir(fullPath);
+            } else if (file.endsWith('.md')) {
+              // Add markdown file with relative path
+              const relativePath = fullPath.replace(dirPath + path.sep, '');
+              results.push(relativePath);
+            }
+          }
+        }
+        
+        scanDir(dirPath);
+        return results;
+      }
     } catch (error) {
       console.error('Error reading directory:', error);
       return [];
+    }
+  });
+
+  ipcMain.handle('fs:isDirectory', async (event, filePath) => {
+    try {
+      if (!currentWorkspacePath || !isPathInside(currentWorkspacePath, filePath)) {
+        throw new Error('Unauthorized file access');
+      }
+      if (!fs.existsSync(filePath)) return false;
+      return fs.statSync(filePath).isDirectory();
+    } catch (error) {
+      console.error('Error checking if directory:', error);
+      return false;
     }
   });
 
@@ -111,6 +164,37 @@ app.whenReady().then(() => {
       return true;
     } catch (error) {
       console.error('Error writing file:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('fs:deleteFile', async (event, filePath) => {
+    try {
+      if (!currentWorkspacePath || !isPathInside(currentWorkspacePath, filePath)) {
+        throw new Error('Unauthorized file delete');
+      }
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('fs:ensureDir', async (event, dirPath) => {
+    try {
+      if (!currentWorkspacePath || !isPathInside(currentWorkspacePath, dirPath)) {
+        throw new Error('Unauthorized directory creation');
+      }
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      return true;
+    } catch (error) {
+      console.error('Error creating directory:', error);
       return false;
     }
   });

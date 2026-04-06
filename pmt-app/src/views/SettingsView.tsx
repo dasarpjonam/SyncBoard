@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '../store/WorkspaceContext';
 import { Plus, X } from 'lucide-react';
+import { LLMProvider, DEFAULT_MODELS } from '../lib/llm-providers';
 
 export function SettingsView() {
-  const { config, saveConfig, apiKey, setApiKey } = useWorkspace();
+  const { 
+    config, saveConfig, 
+    apiKey, setApiKey,
+    llmProvider, llmApiKeys,
+    setLLMProvider, setLLMApiKey
+  } = useWorkspace();
+  
   const [localApiKey, setLocalApiKey] = useState(apiKey || '');
+  const [localLLMProvider, setLocalLLMProvider] = useState<LLMProvider>(llmProvider);
+  const [localLLMApiKeys, setLocalLLMApiKeys] = useState(llmApiKeys);
 
   const [types, setTypes] = useState<string[]>([...config.types]);
   const [newType, setNewType] = useState('');
@@ -17,6 +26,11 @@ export function SettingsView() {
     setStatusesStr(config.statuses.join(', '));
     setUsersStr((config.users || []).join(', '));
   }, [config]);
+
+  useEffect(() => {
+    setLocalLLMProvider(llmProvider);
+    setLocalLLMApiKeys(llmApiKeys);
+  }, [llmProvider, llmApiKeys]);
 
   const handleAddType = () => {
     if (newType.trim() && !types.includes(newType.trim())) {
@@ -41,7 +55,33 @@ export function SettingsView() {
 
   const handleSaveApi = () => {
     setApiKey(localApiKey);
-    alert('API Key saved securely to local storage.');
+    setLLMProvider(localLLMProvider);
+    setLLMApiKey(localLLMProvider, localLLMApiKeys[localLLMProvider]);
+    alert('AI settings saved securely to local storage.');
+  };
+
+  const getProviderLabel = (): string => {
+    switch (localLLMProvider) {
+      case 'claude': return 'Anthropic API Key';
+      case 'chatgpt': return 'OpenAI API Key';
+      case 'gemini': return 'Google Gemini API Key';
+    }
+  };
+
+  const getProviderPlaceholder = (): string => {
+    switch (localLLMProvider) {
+      case 'claude': return 'sk-ant-api...';
+      case 'chatgpt': return 'sk-proj-...';
+      case 'gemini': return 'AIza...';
+    }
+  };
+
+  const getProviderHelpLink = (): string => {
+    switch (localLLMProvider) {
+      case 'claude': return 'https://console.anthropic.com/settings/keys';
+      case 'chatgpt': return 'https://platform.openai.com/api-keys';
+      case 'gemini': return 'https://makersuite.google.com/app/apikey';
+    }
   };
 
   return (
@@ -110,21 +150,49 @@ export function SettingsView() {
           <p className="text-sm text-gray-500 mb-4">Saved locally on your machine, never synced.</p>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">Google Gemini API Key</label>
+            <label className="block text-sm font-medium mb-1">LLM Provider</label>
+            <select
+              value={localLLMProvider}
+              onChange={e => {
+                const newProvider = e.target.value as LLMProvider;
+                setLocalLLMProvider(newProvider);
+              }}
+              className="w-full p-2 border rounded"
+            >
+              <option value="claude">Claude (Anthropic)</option>
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              <option value="gemini">Gemini (Google)</option>
+            </select>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">
+              {getProviderLabel()}
+              <a 
+                href={getProviderHelpLink()} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="ml-2 text-blue-600 text-xs hover:underline"
+              >
+                Get API Key →
+              </a>
+            </label>
             <input
               type="password"
-              value={localApiKey}
-              onChange={e => setLocalApiKey(e.target.value)}
-              placeholder="AIza..."
+              value={localLLMApiKeys[localLLMProvider]}
+              onChange={e => setLocalLLMApiKeys(prev => ({ ...prev, [localLLMProvider]: e.target.value }))}
+              placeholder={getProviderPlaceholder()}
               className="w-full p-2 border rounded"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Using model: {DEFAULT_MODELS[localLLMProvider]}
+            </p>
           </div>
 
           <button onClick={handleSaveApi} className="px-4 py-2 bg-blue-600 text-white rounded">
-            Save API Key
+            Save AI Settings
           </button>
-        </section>
-      </div>
+        </section>      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { WorkItemCard } from '../components/WorkItemCard';
 import { WorkItemModal } from '../components/WorkItemModal';
 import { WorkItem } from '../types';
 import { serializeMarkdownItem } from '../lib/markdown';
+import { ITEMS_FOLDER } from '../lib/constants';
 
 export function BoardView() {
   const { items, config, workspacePath, updateItem, addItem } = useWorkspace();
@@ -24,7 +25,8 @@ export function BoardView() {
     const isNew = !items.find(i => i.id === item.id);
     const content = serializeMarkdownItem(item);
 
-    await window.electronAPI.writeFile(`${workspacePath}/${item.fileName}`, content);
+    await window.electronAPI.ensureDir(`${workspacePath}/${ITEMS_FOLDER}`);
+    await window.electronAPI.writeFile(`${workspacePath}/${ITEMS_FOLDER}/${item.fileName}`, content);
 
     if (isNew) {
       addItem(item);
