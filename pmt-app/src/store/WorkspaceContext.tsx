@@ -4,8 +4,16 @@ import { buildTree, getDescendants } from '../lib/hierarchy';
 import { LLMProvider } from '../lib/llm-providers';
 import { ITEMS_FOLDER } from '../lib/constants';
 import yaml from 'js-yaml';
+import { Notification } from '../types';
+import { NotificationManager } from '../lib/notification-manager';
+import { LiveContextManager } from '../lib/live-context';
+import { evaluateTriggers } from '../lib/notification-triggers';
 
 interface WorkspaceContextProps {
+  notifications: Notification[];
+  unreadCount: number;
+  markNotificationsAsRead: () => void;
+  markNotificationAsRead: (id: string) => void;
   workspacePath: string | null;
   items: WorkItem[];
   itemsTree: WorkItem[];
@@ -57,11 +65,29 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   });
   const [llmModel, setLLMModelState] = useState<string | null>(localStorage.getItem('llmModel'));
   const [currentUser, setCurrentUserState] = useState<string | null>(localStorage.getItem('currentUser'));
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Initialize managers lazily when needed
+  const getNotificationManager = () => workspacePath ? new NotificationManager(workspacePath, window.electronAPI) : null;
+  const getLiveContextManager = () => workspacePath ? new LiveContextManager(workspacePath, window.electronAPI) : null;
+
 
   // Update tree whenever items change
   useEffect(() => {
     setItemsTree(buildTree(items));
   }, [items]);
+
+  useEffect(() => {
+    if (workspacePath && currentUser) {
+      const nm = getNotificationManager();
+      if (nm) {
+        nm.loadNotifications(currentUser).then(setNotifications);
+      }
+    } else {
+      setNotifications([]);
+    }
+  }, [workspacePath, currentUser]);
 
   const setApiKey = (key: string | null) => {
     setApiKeyState(key);
@@ -96,6 +122,22 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const markNotificationsAsRead = async () => {
+    if (!currentUser || !workspacePath) return;
+    const nm = getNotificationManager();
+    const updated = notifications.map(n => ({ ...n, read: true }));
+    setNotifications(updated);
+    if (nm) await nm.saveNotifications(currentUser, updated);
+  };
+
+  const markNotificationAsRead = async (id: string) => {
+    if (!currentUser || !workspacePath) return;
+    const nm = getNotificationManager();
+    const updated = notifications.map(n => n.id === id ? { ...n, read: true } : n);
+    setNotifications(updated);
+    if (nm) await nm.saveNotifications(currentUser, updated);
+  };
+
   const setCurrentUser = (user: string | null) => {
     setCurrentUserState(user);
     if (user) {
@@ -114,12 +156,59 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const addItem = (item: WorkItem, parentId?: string) => {
+  const addItem = async (item: WorkItem, parentId?: string) => {
     const newItem = parentId ? { ...item, parentId } : item;
-    setItems(prev => [...prev, newItem]);
+    setItems(prev => {
+      const newItems = [...prev, newItem];
+
+      // Async trigger and live context updates
+      setTimeout(async () => {
+        const triggers = evaluateTriggers({ newItem, currentUser });
+        if (triggers.length > 0) {
+          const nm = getNotificationManager();
+          if (nm) {
+            await nm.processNotifications(triggers);
+            if (currentUser) {
+              const notifs = await nm.loadNotifications(currentUser);
+              setNotifications(notifs);
+            }
+          }
+        }
+
+        const lcm = getLiveContextManager();
+        if (lcm) await lcm.updateLiveContext(newItems, config);
+      }, 0);
+
+      return newItems;
+    });
   };
   
-  const updateItem = (item: WorkItem) => setItems(prev => prev.map(i => i.id === item.id ? item : i));
+  const updateItem = (item: WorkItem) => {
+    setItems(prev => {
+      const oldItem = prev.find(i => i.id === item.id);
+      const newItems = prev.map(i => i.id === item.id ? item : i);
+
+      if (oldItem) {
+        setTimeout(async () => {
+          const triggers = evaluateTriggers({ oldItem, newItem: item, currentUser });
+          if (triggers.length > 0) {
+            const nm = getNotificationManager();
+            if (nm) {
+              await nm.processNotifications(triggers);
+              if (currentUser) {
+                const notifs = await nm.loadNotifications(currentUser);
+                setNotifications(notifs);
+              }
+            }
+          }
+
+          const lcm = getLiveContextManager();
+          if (lcm) await lcm.updateLiveContext(newItems, config);
+        }, 0);
+      }
+      return newItems;
+    });
+  };
   
   const deleteItem = async (id: string, cascade: boolean = true): Promise<boolean> => {
     if (!workspacePath) return false;
@@ -242,6 +331,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <WorkspaceContext.Provider value={{
+      notifications, unreadCount, markNotificationsAsRead, markNotificationAsRead,
       workspacePath, items, itemsTree, config, apiKey, currentUser,
       llmProvider, llmApiKeys, llmModel,
       setWorkspacePath: setWorkspacePathPersist, setItems, addItem, updateItem, deleteItem, changeParent,

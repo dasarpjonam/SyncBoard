@@ -82,13 +82,13 @@ export function parseTextToWorkItem(text: string, fileName?: string): Partial<Wo
     }
 
     const frontmatter = yaml.load(frontmatterMatch[1]) as Record<string, any>;
-    let restContent = frontmatterMatch[2];
+    const restContent = frontmatterMatch[2];
 
     // Split content and comments
     const commentsMatch = restContent.match(/^([\s\S]*?)\r?\n---\r?\n# Comments\r?\n\r?\n([\s\S]*)$/);
     
     let content = '';
-    let comments: Comment[] = [];
+    const comments: Comment[] = [];
 
     if (commentsMatch) {
       content = commentsMatch[1].trim();

@@ -51,8 +51,17 @@ export function ChatInterface() {
         // Build optimized context (token-efficient)
         const workspaceContext = buildLLMContext(items, config, query, 3000);
 
+        let liveContext = '';
+        try {
+          liveContext = await window.electronAPI.readFile(`${workspacePath}/project_context.md`) || '';
+        } catch(e) {}
+
+
         // Build system instruction
         const systemPrompt = `You are an AI Program Management assistant.
+
+${liveContext}
+
 
 ${workspaceContext}
 
