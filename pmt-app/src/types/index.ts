@@ -27,3 +27,16 @@ export interface WorkspaceConfig {
   statuses: string[];
   users: string[];
 }
+
+
+export interface Notification {
+  id: string;
+  type: 'mention' | 'assignment' | 'status_change' | 'system';
+  title: string;
+  message: string;
+  targetId?: string; // e.g. WorkItem ID
+  actor?: string; // The user who triggered it
+  recipient: string; // The user who should see this
+  timestamp: string;
+  read: boolean;
+}
