@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Typography, Box, Tooltip, useMediaQuery, useTheme } from '@mui/material';
-import { LayoutDashboard, Settings, FolderOpen, FolderPlus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Settings, FolderOpen, FolderPlus, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import { useWorkspace } from '../store/WorkspaceContext';
 
 const DRAWER_WIDTH = 240;
 const DRAWER_WIDTH_COLLAPSED = 72;
 
 export function Sidebar() {
-  const { workspacePath, loadWorkspace } = useWorkspace();
+  const { workspacePath, loadWorkspace, lockWorkspace, authSession } = useWorkspace();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -154,6 +154,30 @@ export function Sidebar() {
             )}
           </ListItemButton>
         </Tooltip>
+
+        {/* Lock Workspace button - only show if authenticated */}
+        {authSession?.isAuthenticated && (
+          <Tooltip title={collapsed ? 'Lock Workspace' : ''} placement="right">
+            <ListItemButton
+              onClick={lockWorkspace}
+              sx={{
+                borderRadius: 1,
+                '&:hover': { backgroundColor: '#374151' },
+                justifyContent: collapsed ? 'center' : 'flex-start',
+              }}
+            >
+              <ListItemIcon sx={{ color: '#ffffff', minWidth: collapsed ? 0 : 40 }}>
+                <Lock size={20} />
+              </ListItemIcon>
+              {!collapsed && (
+                <ListItemText
+                  primary="Lock Workspace"
+                  primaryTypographyProps={{ fontSize: '0.875rem' }}
+                />
+              )}
+            </ListItemButton>
+          </Tooltip>
+        )}
 
         {workspacePath && !collapsed && (
           <Typography

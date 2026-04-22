@@ -26,8 +26,39 @@ export interface WorkspaceConfig {
   types: string[];
   statuses: string[];
   users: string[];
+  auth?: WorkspaceAuth; // Optional authentication settings
 }
 
+export interface WorkspaceAuth {
+  enabled: boolean;
+  requirePassword: boolean;
+  lockAfterMinutes?: number;
+}
+
+export interface User {
+  id: string;
+  displayName: string;
+  email?: string;
+  githubHandle?: string;
+  role: 'admin' | 'contributor' | 'viewer';
+}
+
+export type UserRole = 'admin' | 'contributor' | 'viewer';
+
+export interface WorkspacePermissions {
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canManageUsers: boolean;
+  canManageAuth: boolean;
+}
+
+export interface AuthSession {
+  isAuthenticated: boolean;
+  user: User | null;
+  permissions: WorkspacePermissions;
+  lockedAt?: string;
+}
 
 export interface Notification {
   id: string;

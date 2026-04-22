@@ -9,4 +9,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteFile: (filePath) => ipcRenderer.invoke('fs:deleteFile', filePath),
   ensureDir: (dirPath) => ipcRenderer.invoke('fs:ensureDir', dirPath),
   isDirectory: (filePath) => ipcRenderer.invoke('fs:isDirectory', filePath),
+  
+  // Git integration
+  gitGetUserInfo: () => ipcRenderer.invoke('git:getUserInfo'),
+  
+  // Authentication
+  authCheckWorkspaceAuth: (workspacePath) => ipcRenderer.invoke('auth:checkWorkspaceAuth', workspacePath),
+  authSetWorkspacePassword: (workspacePath, passwordHash, salt) => ipcRenderer.invoke('auth:setWorkspacePassword', workspacePath, passwordHash, salt),
+  authVerifyWorkspacePassword: (workspacePath, passwordHash) => ipcRenderer.invoke('auth:verifyWorkspacePassword', workspacePath, passwordHash),
+  authGetPasswordSalt: (workspacePath) => ipcRenderer.invoke('auth:getPasswordSalt', workspacePath),
+  authDisableWorkspaceAuth: (workspacePath) => ipcRenderer.invoke('auth:disableWorkspaceAuth', workspacePath),
 });

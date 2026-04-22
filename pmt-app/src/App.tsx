@@ -1,19 +1,45 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { ChatInterface } from './components/ChatInterface';
 import { WorkspaceView } from './views/WorkspaceView';
 import { WorkItemEditView } from './views/WorkItemEditView';
 import { SettingsView } from './views/SettingsView';
+import { LockScreen } from './components/LockScreen';
 import { useWorkspace } from './store/WorkspaceContext';
 import { parseMarkdownItem } from './lib/markdown';
 import { ITEMS_FOLDER } from './lib/constants';
-import { WorkItem } from './types';
+import { WorkItem, User } from './types';
 
 function AppContent() {
-  const { workspacePath, setItems, loadWorkspace } = useWorkspace();
+  const { 
+    workspacePath, setItems, loadWorkspace, 
+    isLocked, unlockWorkspace, checkWorkspaceAuth 
+  } = useWorkspace();
+  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+  const [requirePassword, setRequirePassword] = useState(false);
 
   console.log('[App] Rendering with workspacePath:', workspacePath);
+
+  // Check if workspace requires authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (!workspacePath) {
+        setAuthRequired(false);
+        return;
+      }
+
+      const authConfig = await checkWorkspaceAuth(workspacePath);
+      if (authConfig && authConfig.enabled) {
+        setAuthRequired(true);
+        setRequirePassword(authConfig.requirePassword);
+      } else {
+        setAuthRequired(false);
+      }
+    };
+
+    checkAuth();
+  }, [workspacePath, checkWorkspaceAuth]);
 
   useEffect(() => {
     console.log('[App] Init effect - workspacePath:', workspacePath);
@@ -70,6 +96,23 @@ function AppContent() {
 
     loadItems();
   }, [workspacePath, setItems]);
+
+  const handleUnlock = (user: User) => {
+    unlockWorkspace(user);
+  };
+
+  // Show lock screen if workspace requires auth and is locked
+  if (workspacePath && authRequired && isLocked) {
+    return (
+      <div className="h-screen w-full">
+        <LockScreen
+          workspacePath={workspacePath}
+          requirePassword={requirePassword}
+          onUnlock={handleUnlock}
+        />
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>
