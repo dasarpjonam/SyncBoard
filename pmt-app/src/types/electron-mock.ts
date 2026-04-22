@@ -41,6 +41,20 @@ if (!window.electronAPI) {
     deleteFile: async () => true,
     ensureDir: async () => true,
     isDirectory: async () => false,
+    
+    // Git integration
+    gitGetUserInfo: async () => ({
+      name: 'Demo User',
+      email: 'demo@example.com',
+      github: 'demouser'
+    }),
+    
+    // Authentication
+    authCheckWorkspaceAuth: async () => null, // No auth in demo mode
+    authSetWorkspacePassword: async () => true,
+    authVerifyWorkspacePassword: async () => true,
+    authGetPasswordSalt: async () => null,
+    authDisableWorkspaceAuth: async () => true,
   };
   
   // Auto-initialize workspace in dev mode
