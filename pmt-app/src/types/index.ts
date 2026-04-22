@@ -40,23 +40,11 @@ export interface User {
   displayName: string;
   email?: string;
   githubHandle?: string;
-  role: 'admin' | 'contributor' | 'viewer';
-}
-
-export type UserRole = 'admin' | 'contributor' | 'viewer';
-
-export interface WorkspacePermissions {
-  canCreate: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canManageUsers: boolean;
-  canManageAuth: boolean;
 }
 
 export interface AuthSession {
   isAuthenticated: boolean;
   user: User | null;
-  permissions: WorkspacePermissions;
   lockedAt?: string;
 }
 

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { WorkItem, WorkspaceConfig, User, AuthSession, WorkspacePermissions } from '../types';
+import { WorkItem, WorkspaceConfig, User, AuthSession } from '../types';
 import { buildTree, getDescendants } from '../lib/hierarchy';
 import { LLMProvider } from '../lib/llm-providers';
 import { ITEMS_FOLDER } from '../lib/constants';

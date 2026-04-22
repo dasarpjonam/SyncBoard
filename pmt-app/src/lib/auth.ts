@@ -1,41 +1,9 @@
-import { User, UserRole, WorkspacePermissions, AuthSession } from '../types';
+import { User, AuthSession } from '../types';
 
 export class WorkspaceAuthManager {
   private static SESSION_KEY = 'workspace_auth_session';
   private static LOCK_TIMEOUT_KEY = 'workspace_lock_timeout';
   
-  /**
-   * Get role-based permissions
-   */
-  static getPermissions(role: UserRole): WorkspacePermissions {
-    switch (role) {
-      case 'admin':
-        return {
-          canCreate: true,
-          canEdit: true,
-          canDelete: true,
-          canManageUsers: true,
-          canManageAuth: true,
-        };
-      case 'contributor':
-        return {
-          canCreate: true,
-          canEdit: true,
-          canDelete: false,
-          canManageUsers: false,
-          canManageAuth: false,
-        };
-      case 'viewer':
-        return {
-          canCreate: false,
-          canEdit: false,
-          canDelete: false,
-          canManageUsers: false,
-          canManageAuth: false,
-        };
-    }
-  }
-
   /**
    * Create an authenticated session
    */
@@ -43,7 +11,6 @@ export class WorkspaceAuthManager {
     const session: AuthSession = {
       isAuthenticated: true,
       user,
-      permissions: this.getPermissions(user.role),
     };
     
     // Store in session storage (cleared on app close)
@@ -139,7 +106,6 @@ export class WorkspaceAuthManager {
       displayName: gitUser.name,
       email: gitUser.email,
       githubHandle: gitUser.github,
-      role: 'contributor', // Default role
     };
   }
 

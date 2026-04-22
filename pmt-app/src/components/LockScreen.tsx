@@ -262,9 +262,9 @@ export function LockScreen({ workspacePath, requirePassword, onUnlock, onCancel 
 
         <div className="mt-6 pt-6 border-t">
           <p className="text-xs text-gray-500 text-center">
-            Your password is stored securely and encrypted locally.
+            This password unlocks the workspace within SyncBoard.
             <br />
-            Authentication is offline-only and never transmitted.
+            File access is controlled by your sync service (Dropbox, Git, etc.).
           </p>
         </div>
       </div>

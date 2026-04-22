@@ -218,6 +218,20 @@ export function SettingsView() {
 
         <section className="mb-10">
           <h2 className="text-xl font-semibold border-b pb-2 mb-4">Workspace Security</h2>
+          
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <h3 className="font-medium text-blue-900 mb-2">About Workspace Authentication</h3>
+            <p className="text-sm text-blue-800 mb-2">
+              The workspace password locks access within SyncBoard. File-level access 
+              control is managed by your sync service:
+            </p>
+            <ul className="text-sm text-blue-800 ml-4 list-disc space-y-1">
+              <li>Dropbox/Drive: Share folder with team members</li>
+              <li>Git: Use repository permissions</li>
+              <li>Network shares: Use file system permissions</li>
+            </ul>
+          </div>
+
           <p className="text-sm text-gray-500 mb-4">
             Enable password protection to require authentication when opening this workspace.
           </p>
