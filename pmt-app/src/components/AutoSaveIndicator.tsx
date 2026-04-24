@@ -42,40 +42,59 @@ export function AutoSaveIndicator({ status, lastSavedAt, error }: Props) {
     switch (status) {
       case 'saving':
         return {
-          icon: <Loader2 size={14} className="animate-spin" />,
+          icon: <Loader2 size={16} className="animate-spin" />,
           text: 'Saving...',
-          color: 'text-gray-600',
+          bgColor: 'bg-blue-50',
+          textColor: 'text-blue-700',
+          borderColor: 'border-blue-200',
+          pulse: true,
         };
       case 'saved':
         return {
-          icon: <Check size={14} />,
+          icon: <Check size={16} />,
           text: lastSavedAt ? `Saved ${timeAgo}` : 'Saved',
-          color: 'text-green-600',
+          bgColor: 'bg-green-50',
+          textColor: 'text-green-700',
+          borderColor: 'border-green-200',
+          pulse: false,
         };
       case 'error':
         return {
-          icon: <AlertCircle size={14} />,
+          icon: <AlertCircle size={16} />,
           text: error || 'Save failed',
-          color: 'text-red-600',
+          bgColor: 'bg-red-50',
+          textColor: 'text-red-700',
+          borderColor: 'border-red-200',
+          pulse: false,
         };
+      case 'idle':
       default:
-        return null;
+        return {
+          icon: <Check size={16} className="opacity-50" />,
+          text: lastSavedAt ? `Saved ${timeAgo}` : 'All changes saved',
+          bgColor: 'bg-gray-50',
+          textColor: 'text-gray-600',
+          borderColor: 'border-gray-200',
+          pulse: false,
+        };
     }
   };
 
   const display = getStatusDisplay();
 
-  if (!display) {
-    return null;
-  }
-
   return (
     <div
-      className={`flex items-center gap-1.5 text-xs ${display.color}`}
+      className={`
+        flex items-center gap-2 px-3 py-2 rounded-lg border
+        ${display.bgColor} ${display.textColor} ${display.borderColor}
+        ${display.pulse ? 'animate-pulse' : ''}
+        text-sm font-medium shadow-sm
+        transition-all duration-300
+      `}
       title={error || undefined}
     >
       {display.icon}
-      <span>{display.text}</span>
+      <span className="whitespace-nowrap">{display.text}</span>
     </div>
   );
 }
@@ -104,10 +123,10 @@ export function useAutoSave<T>(
         setLastSavedAt(new Date());
         setError(undefined);
 
-        // Fade out saved indicator after 2 seconds
+        // Transition to idle after 3 seconds (still shows "Saved X ago")
         setTimeout(() => {
           setStatus('idle');
-        }, 2000);
+        }, 3000);
       } catch (err) {
         setStatus('error');
         setError(err instanceof Error ? err.message : 'Failed to save');
