@@ -56,9 +56,15 @@ describe('AutoSaveIndicator', () => {
     expect(screen.getByText('Save failed')).toBeInTheDocument();
   });
 
-  it('should render nothing when status is idle', () => {
-    const { container } = render(<AutoSaveIndicator status="idle" />);
-    expect(container.firstChild).toBeNull();
+  it('should render persistent message when status is idle', () => {
+    render(<AutoSaveIndicator status="idle" />);
+    expect(screen.getByText('All changes saved')).toBeInTheDocument();
+  });
+
+  it('should render "Saved X ago" when status is idle with timestamp', () => {
+    const oneMinuteAgo = new Date(Date.now() - 60000);
+    render(<AutoSaveIndicator status="idle" lastSavedAt={oneMinuteAgo} />);
+    expect(screen.getByText('Saved 1m ago')).toBeInTheDocument();
   });
 
   it('should show spinner icon when saving', () => {
@@ -76,30 +82,31 @@ describe('AutoSaveIndicator', () => {
 
   it('should update time ago periodically', async () => {
     const fiveSecondsAgo = new Date(Date.now() - 5000);
-    const { rerender } = render(<AutoSaveIndicator status="saved" lastSavedAt={fiveSecondsAgo} />);
+    render(<AutoSaveIndicator status="saved" lastSavedAt={fiveSecondsAgo} />);
     
     expect(screen.getByText('Saved 5s ago')).toBeInTheDocument();
 
     // Advance timer by 5 seconds
-    act(() => {
+    await act(async () => {
       vi.advanceTimersByTime(5000);
     });
 
     // Should update to 10s ago
-    await waitFor(() => {
-      expect(screen.getByText('Saved 10s ago')).toBeInTheDocument();
-    });
+    expect(screen.getByText('Saved 10s ago')).toBeInTheDocument();
   });
 
   it('should apply correct color classes for different statuses', () => {
     const { container: savingContainer } = render(<AutoSaveIndicator status="saving" />);
-    expect(savingContainer.querySelector('.text-gray-600')).toBeInTheDocument();
+    expect(savingContainer.querySelector('.text-blue-700')).toBeInTheDocument();
+    expect(savingContainer.querySelector('.bg-blue-50')).toBeInTheDocument();
 
     const { container: savedContainer } = render(<AutoSaveIndicator status="saved" />);
-    expect(savedContainer.querySelector('.text-green-600')).toBeInTheDocument();
+    expect(savedContainer.querySelector('.text-green-700')).toBeInTheDocument();
+    expect(savedContainer.querySelector('.bg-green-50')).toBeInTheDocument();
 
     const { container: errorContainer } = render(<AutoSaveIndicator status="error" />);
-    expect(errorContainer.querySelector('.text-red-600')).toBeInTheDocument();
+    expect(errorContainer.querySelector('.text-red-700')).toBeInTheDocument();
+    expect(errorContainer.querySelector('.bg-red-50')).toBeInTheDocument();
   });
 });
 
@@ -109,38 +116,38 @@ describe('useAutoSave hook', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it('should call onSave after delay', async () => {
+    vi.useRealTimers(); // Use real timers for this test
     const mockSave = vi.fn().mockResolvedValue(undefined);
     const TestComponent = () => {
-      const { status } = useAutoSave('test value', mockSave, 500);
-      return <div>{status}</div>;
+      const { status } = useAutoSave('test value', mockSave, 100); // Shorter delay for test
+      return <div data-testid="status">{status}</div>;
     };
 
-    render(<TestComponent />);
+    const { getByTestId } = render(<TestComponent />);
 
     // Should show saving immediately
-    expect(screen.getByText('saving')).toBeInTheDocument();
-
-    // Advance timer
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
+    expect(getByTestId('status').textContent).toBe('saving');
 
     // Wait for save to complete
-    await waitFor(() => {
-      expect(mockSave).toHaveBeenCalledWith('test value');
-      expect(screen.getByText('saved')).toBeInTheDocument();
-    });
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    expect(mockSave).toHaveBeenCalledWith('test value');
+    // Should be saved now (before the 3 second idle timeout)
+    expect(getByTestId('status').textContent).toBe('saved');
+    
+    vi.useFakeTimers(); // Restore fake timers
   });
 
   it('should debounce multiple value changes', async () => {
     const mockSave = vi.fn().mockResolvedValue(undefined);
     const TestComponent = ({ value }: { value: string }) => {
       const { status } = useAutoSave(value, mockSave, 500);
-      return <div>{status}</div>;
+      return <div data-testid="status">{status}</div>;
     };
 
     const { rerender } = render(<TestComponent value="first" />);
@@ -150,80 +157,87 @@ describe('useAutoSave hook', () => {
     rerender(<TestComponent value="third" />);
 
     // Advance timer
-    act(() => {
+    await act(async () => {
       vi.advanceTimersByTime(500);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
     });
 
     // Should only save once with the latest value
-    await waitFor(() => {
-      expect(mockSave).toHaveBeenCalledTimes(1);
-      expect(mockSave).toHaveBeenCalledWith('third');
-    });
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(mockSave).toHaveBeenCalledWith('third');
   });
 
   it('should handle save errors', async () => {
     const mockSave = vi.fn().mockRejectedValue(new Error('Failed to save'));
     const TestComponent = () => {
       const { status, error } = useAutoSave('test value', mockSave, 500);
-      return <div>{status} {error}</div>;
+      return <div data-testid="result">{status} {error}</div>;
     };
 
-    render(<TestComponent />);
+    const { getByTestId } = render(<TestComponent />);
 
-    act(() => {
+    await act(async () => {
       vi.advanceTimersByTime(500);
+      await Promise.resolve();
     });
 
-    await waitFor(() => {
-      expect(screen.getByText(/error/)).toBeInTheDocument();
-      expect(screen.getByText(/Failed to save/)).toBeInTheDocument();
+    await act(async () => {
+      await vi.runAllTimersAsync();
     });
+
+    const result = getByTestId('result').textContent;
+    expect(result).toContain('error');
+    expect(result).toContain('Failed to save');
   });
 
   it('should set lastSavedAt after successful save', async () => {
     const mockSave = vi.fn().mockResolvedValue(undefined);
     const TestComponent = () => {
       const { lastSavedAt } = useAutoSave('test value', mockSave, 500);
-      return <div>{lastSavedAt ? 'Has timestamp' : 'No timestamp'}</div>;
+      return <div data-testid="timestamp">{lastSavedAt ? 'Has timestamp' : 'No timestamp'}</div>;
     };
 
-    render(<TestComponent />);
+    const { getByTestId } = render(<TestComponent />);
 
-    act(() => {
+    await act(async () => {
       vi.advanceTimersByTime(500);
+      await Promise.resolve();
     });
 
-    await waitFor(() => {
-      expect(screen.getByText('Has timestamp')).toBeInTheDocument();
+    await act(async () => {
+      await vi.runAllTimersAsync();
     });
+
+    expect(getByTestId('timestamp').textContent).toBe('Has timestamp');
   });
 
-  it('should fade to idle after 2 seconds of saved status', async () => {
+  it('should fade to idle after 3 seconds of saved status', async () => {
+    vi.useRealTimers(); // Use real timers for this test
     const mockSave = vi.fn().mockResolvedValue(undefined);
     const TestComponent = () => {
-      const { status } = useAutoSave('test value', mockSave, 500);
-      return <div>{status}</div>;
+      const { status } = useAutoSave('test value', mockSave, 100); // Shorter delay for test
+      return <div data-testid="status">{status}</div>;
     };
 
-    render(<TestComponent />);
+    const { getByTestId } = render(<TestComponent />);
 
     // Wait for save
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
+    await new Promise(resolve => setTimeout(resolve, 150));
 
-    await waitFor(() => {
-      expect(screen.getByText('saved')).toBeInTheDocument();
-    });
+    // Should be saved now
+    expect(getByTestId('status').textContent).toBe('saved');
 
-    // Wait 2 more seconds
-    act(() => {
-      vi.advanceTimersByTime(2000);
-    });
+    // Wait 3 more seconds for transition to idle (use shorter time for test)
+    await new Promise(resolve => setTimeout(resolve, 3100));
 
-    await waitFor(() => {
-      expect(screen.getByText('idle')).toBeInTheDocument();
-    });
+    // Should now be idle
+    expect(getByTestId('status').textContent).toBe('idle');
+    
+    vi.useFakeTimers(); // Restore fake timers
   });
 
   it('should not save when value is null or undefined', () => {

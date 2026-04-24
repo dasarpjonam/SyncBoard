@@ -51,7 +51,7 @@ export function WorkItemEditView() {
   }, [workspacePath, isNewItem, existingItem, updateItem]);
 
   // Auto-save hook - only for existing items
-  const { status: autoSaveStatus, lastSavedAt } = useAutoSave(
+  const { status: autoSaveStatus, lastSavedAt, error: autoSaveError } = useAutoSave(
     !isNewItem ? formData : null,
     handleAutoSave,
     2000 // 2 second delay
@@ -217,10 +217,8 @@ export function WorkItemEditView() {
     <div className="h-full flex flex-col bg-white">
       {/* Floating Header - Minimal */}
       <div className="px-6 py-4 flex items-center justify-between flex-shrink-0 border-b border-gray-200">
-        {/* Left: Auto-save indicator and View Toggle */}
+        {/* Left: View Toggle */}
         <div className="flex items-center gap-6">
-          {!isNewItem && <AutoSaveIndicator status={autoSaveStatus} lastSavedAt={lastSavedAt} />}
-          
           {/* View Mode Toggle */}
           <div className="flex items-center gap-1">
             <button
@@ -250,8 +248,10 @@ export function WorkItemEditView() {
           </div>
         </div>
         
-        {/* Right: Actions */}
+        {/* Right: Auto-save indicator and Actions */}
         <div className="flex items-center gap-3">
+          {!isNewItem && <AutoSaveIndicator status={autoSaveStatus} lastSavedAt={lastSavedAt} error={autoSaveError} />}
+          
           {!isNewItem && (
             <button
               onClick={handleDelete}
