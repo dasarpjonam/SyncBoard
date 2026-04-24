@@ -459,12 +459,66 @@ Run these before each release:
 
 ---
 
+## Password Recovery
+
+### If You Forget Your Workspace Password
+
+Since passwords are hashed using PBKDF2 (not reversible), there's no way to recover a forgotten password. You have two options:
+
+#### Option 1: Delete the Auth File (Recommended)
+```bash
+# Navigate to your workspace
+cd /path/to/your/workspace
+
+# Delete the auth configuration
+rm .syncboard/.auth
+```
+
+After deleting the file:
+1. Restart SyncBoard
+2. Open the workspace (no password required)
+3. Go to Settings → Workspace Security
+4. Set a new password if desired
+
+#### Option 2: Manually Edit the Auth File
+```bash
+# Open the auth file
+nano .syncboard/.auth
+```
+
+Change `"enabled": true` to `"enabled": false`:
+```json
+{
+  "enabled": false,
+  "requirePassword": false,
+  "passwordHash": "...",
+  "salt": "...",
+  "createdAt": "..."
+}
+```
+
+Save and restart SyncBoard. The workspace will open without requiring a password.
+
+#### Option 3: Create New Workspace
+If the workspace files are synced (via Dropbox/Git):
+1. Create a new workspace folder
+2. Let your sync service populate it with the workspace files
+3. The new folder won't have the `.syncboard/.auth` file
+
+### Important Notes
+- **Files are not encrypted:** Anyone with file system access can read your workspace files regardless of the password
+- **Password protects app access only:** The workspace password prevents unauthorized access within SyncBoard, but does not encrypt files
+- **Backup before deleting:** If you're unsure, make a backup of `.syncboard/.auth` before deleting it
+
+---
+
 ## Known Limitations (Document These)
 
 1. **Authorization:** Not enforced by app (handled by sync service)
 2. **File Encryption:** Files are not encrypted
 3. **Bypass:** User with file system access can edit `.auth`
 4. **Audit:** No built-in audit trail (use git for this)
+5. **No Password Recovery:** Passwords cannot be recovered if forgotten (must be reset via file system)
 
 ---
 

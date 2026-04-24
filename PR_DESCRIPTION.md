@@ -145,6 +145,7 @@ SyncBoard follows a **clear separation of concerns**:
 - Files are not encrypted (readable by anyone with folder access)
 - Suitable for trusted teams and personal workflows
 - Authorization is handled by sync service (Dropbox, Git, etc.)
+- **Password Recovery:** Forgotten passwords cannot be recovered; delete `.syncboard/.auth` to reset
 
 For enhanced security, use:
 - Encrypted sync services (Boxcryptor, Cryptomator)

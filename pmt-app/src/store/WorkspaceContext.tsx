@@ -78,7 +78,8 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
     return WorkspaceAuthManager.getSession();
   });
-  const [isLocked, setIsLocked] = useState<boolean>(!authSession?.isAuthenticated);
+  // Start locked by default - will be unlocked by validation effect if session is valid
+  const [isLocked, setIsLocked] = useState<boolean>(true);
   
   // Track auto-lock cleanup function
   const autoLockCleanupRef = useRef<(() => void) | null>(null);
@@ -105,12 +106,40 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
   // Validate auth session when workspace changes - lock if workspace mismatch
   useEffect(() => {
-    const session = WorkspaceAuthManager.getSession();
-    if (session && session.workspacePath !== workspacePath) {
-      // Session is for a different workspace - lock automatically
-      lockWorkspace();
-    }
-  }, [workspacePath, lockWorkspace]);
+    const validateSession = async () => {
+      if (!workspacePath) {
+        // No workspace, no auth needed
+        setIsLocked(false);
+        return;
+      }
+
+      // Check if workspace requires auth
+      const authConfig = await window.electronAPI.authCheckWorkspaceAuth(workspacePath);
+      
+      if (!authConfig || !authConfig.enabled) {
+        // Workspace doesn't require auth
+        setIsLocked(false);
+        return;
+      }
+
+      // Workspace requires auth - check if we have a valid session
+      const session = WorkspaceAuthManager.getSession();
+      if (session && session.isAuthenticated && session.workspacePath === workspacePath) {
+        // Valid session for this workspace
+        setIsLocked(false);
+      } else {
+        // No valid session or wrong workspace - lock it
+        if (session && session.workspacePath !== workspacePath) {
+          // Clear invalid session
+          WorkspaceAuthManager.clearSession();
+          setAuthSession(null);
+        }
+        setIsLocked(true);
+      }
+    };
+
+    validateSession();
+  }, [workspacePath]);
 
   useEffect(() => {
     if (workspacePath && currentUser) {
