@@ -26,17 +26,17 @@ export class LiveContextManager {
 This file contains the live state of the Syncboard workspace. It is intended to provide AI assistants with up-to-date context about the project.
 
 ## Project Summary
-- Total Items: \${items.length}
-- Active Items: \${activeItems.length}
-- Completed Items: \${items.length - activeItems.length}
-- Team Members: \${config.users.join(', ') || 'None'}
+- Total Items: ${items.length}
+- Active Items: ${activeItems.length}
+- Completed Items: ${items.length - activeItems.length}
+- Team Members: ${config.users.join(', ') || 'None'}
 
 ## Recent Activity
-\${recentlyUpdated.map(i => \`- [\${i.id}] \${i.title} (\${i.status}) - Last updated: \${new Date(i.updatedAt).toLocaleString()}\`).join('\\n')}
+${recentlyUpdated.map(i => `- [${i.id}] ${i.title} (${i.status}) - Last updated: ${new Date(i.updatedAt).toLocaleString()}`).join('\n')}
 
 ## Workflow Configuration
-- Types: \${config.types.join(', ')}
-- Statuses: \${config.statuses.join(', ')}
+- Types: ${config.types.join(', ')}
+- Statuses: ${config.statuses.join(', ')}
 
 ## General Guidelines
 - When creating new items, use the defined Types and Statuses.
@@ -44,7 +44,7 @@ This file contains the live state of the Syncboard workspace. It is intended to 
 - Reference existing items by their ID (e.g. ITEM-12345).
 `;
 
-      await this.electronAPI.writeFile(\`\${this.workspacePath}/project_context.md\`, content);
+      await this.electronAPI.writeFile(`${this.workspacePath}/project_context.md`, content);
     } catch (e) {
       console.error('Failed to update live context', e);
     }

@@ -199,6 +199,142 @@ app.whenReady().then(() => {
     }
   });
 
+  // Git user info handlers
+  ipcMain.handle('git:getUserInfo', async () => {
+    const { execSync } = require('child_process');
+    try {
+      const name = execSync('git config user.name', { encoding: 'utf-8' }).trim();
+      const email = execSync('git config user.email', { encoding: 'utf-8' }).trim();
+      
+      // Try to get GitHub username from git config
+      let github;
+      try {
+        github = execSync('git config github.user', { encoding: 'utf-8' }).trim();
+      } catch (e) {
+        // GitHub username not configured
+      }
+      
+      return { name, email, ...(github ? { github } : {}) };
+    } catch (error) {
+      console.error('Error reading git config:', error);
+      return null;
+    }
+  });
+
+  // Auth handlers
+  ipcMain.handle('auth:checkWorkspaceAuth', async (event, workspacePath) => {
+    try {
+      // Security: verify path is within current workspace
+      if (!currentWorkspacePath || workspacePath !== currentWorkspacePath) {
+        throw new Error('Unauthorized workspace access');
+      }
+      
+      const authPath = path.join(workspacePath, '.syncboard', '.auth');
+      if (!fs.existsSync(authPath)) {
+        return null;
+      }
+      const authData = JSON.parse(fs.readFileSync(authPath, 'utf-8'));
+      return {
+        enabled: authData.enabled || false,
+        requirePassword: authData.requirePassword || false,
+      };
+    } catch (error) {
+      console.error('Error checking workspace auth:', error);
+      return null;
+    }
+  });
+
+  ipcMain.handle('auth:setWorkspacePassword', async (event, workspacePath, passwordHash, salt) => {
+    try {
+      // Security: verify path is within current workspace
+      if (!currentWorkspacePath || workspacePath !== currentWorkspacePath) {
+        throw new Error('Unauthorized workspace access');
+      }
+      
+      const syncboardDir = path.join(workspacePath, '.syncboard');
+      if (!fs.existsSync(syncboardDir)) {
+        fs.mkdirSync(syncboardDir, { recursive: true });
+      }
+      
+      const authPath = path.join(syncboardDir, '.auth');
+      const authData = {
+        enabled: true,
+        requirePassword: true,
+        passwordHash,
+        salt,
+        createdAt: new Date().toISOString(),
+      };
+      
+      // Security: write with restrictive permissions (0o600) on POSIX
+      fs.writeFileSync(authPath, JSON.stringify(authData, null, 2), { 
+        encoding: 'utf-8',
+        mode: 0o600 
+      });
+      return true;
+    } catch (error) {
+      console.error('Error setting workspace password:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('auth:verifyWorkspacePassword', async (event, workspacePath, passwordHash) => {
+    try {
+      // Security: verify path is within current workspace
+      if (!currentWorkspacePath || workspacePath !== currentWorkspacePath) {
+        throw new Error('Unauthorized workspace access');
+      }
+      
+      const authPath = path.join(workspacePath, '.syncboard', '.auth');
+      if (!fs.existsSync(authPath)) {
+        return false;
+      }
+      
+      const authData = JSON.parse(fs.readFileSync(authPath, 'utf-8'));
+      return authData.passwordHash === passwordHash;
+    } catch (error) {
+      console.error('Error verifying workspace password:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('auth:getPasswordSalt', async (event, workspacePath) => {
+    try {
+      // Security: verify path is within current workspace
+      if (!currentWorkspacePath || workspacePath !== currentWorkspacePath) {
+        throw new Error('Unauthorized workspace access');
+      }
+      
+      const authPath = path.join(workspacePath, '.syncboard', '.auth');
+      if (!fs.existsSync(authPath)) {
+        return null;
+      }
+      
+      const authData = JSON.parse(fs.readFileSync(authPath, 'utf-8'));
+      return authData.salt || null;
+    } catch (error) {
+      console.error('Error getting password salt:', error);
+      return null;
+    }
+  });
+
+  ipcMain.handle('auth:disableWorkspaceAuth', async (event, workspacePath) => {
+    try {
+      // Security: verify path is within current workspace
+      if (!currentWorkspacePath || workspacePath !== currentWorkspacePath) {
+        throw new Error('Unauthorized workspace access');
+      }
+      
+      const authPath = path.join(workspacePath, '.syncboard', '.auth');
+      if (fs.existsSync(authPath)) {
+        fs.unlinkSync(authPath);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error disabling workspace auth:', error);
+      return false;
+    }
+  });
+
   createWindow();
 
   app.on('activate', () => {

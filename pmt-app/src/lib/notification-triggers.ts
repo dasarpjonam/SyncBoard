@@ -16,10 +16,10 @@ export const triggerRegistry: Record<string, TriggerHandler> = {
       // Notify the assignee if someone else changed the status
       if (newItem.assignee && newItem.assignee !== currentUser) {
         notifications.push({
-          id: \`notif-\${Date.now()}-\${Math.random().toString(36).substring(2, 9)}\`,
+          id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           type: 'status_change',
-          title: \`Status changed on \${newItem.id}\`,
-          message: \`\${currentUser || 'Someone'} changed the status of "\${newItem.title}" from \${oldItem.status} to \${newItem.status}\`,
+          title: `Status changed on ${newItem.id}`,
+          message: `${currentUser || 'Someone'} changed the status of "${newItem.title}" from ${oldItem.status} to ${newItem.status}`,
           targetId: newItem.id,
           actor: currentUser || 'System',
           recipient: newItem.assignee!,
@@ -37,10 +37,10 @@ export const triggerRegistry: Record<string, TriggerHandler> = {
        // Notify the new assignee if they didn't assign it to themselves
        if (newItem.assignee !== currentUser) {
          notifications.push({
-            id: \`notif-\${Date.now()}-\${Math.random().toString(36).substring(2, 9)}\`,
+            id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
             type: 'assignment',
-            title: \`You were assigned to \${newItem.id}\`,
-            message: \`\${currentUser || 'Someone'} assigned you to "\${newItem.title}"\`,
+            title: `You were assigned to ${newItem.id}`,
+            message: `${currentUser || 'Someone'} assigned you to "${newItem.title}"`,
             targetId: newItem.id,
             actor: currentUser || 'System',
           recipient: newItem.assignee!,
@@ -68,10 +68,10 @@ export const triggerRegistry: Record<string, TriggerHandler> = {
           const mentionedUser = mention.substring(1); // remove @
           if (mentionedUser !== currentUser) {
             notifications.push({
-              id: \`notif-\${Date.now()}-\${Math.random().toString(36).substring(2, 9)}\`,
+              id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
               type: 'mention',
-              title: \`You were mentioned in \${newItem.id}\`,
-              message: \`\${comment.author} mentioned you in a comment on "\${newItem.title}"\`,
+              title: `You were mentioned in ${newItem.id}`,
+              message: `${comment.author} mentioned you in a comment on "${newItem.title}"`,
               targetId: newItem.id,
               actor: comment.author,
               recipient: mentionedUser,
@@ -85,22 +85,22 @@ export const triggerRegistry: Record<string, TriggerHandler> = {
 
     // Check main content mentions if content changed
     if (!oldItem || oldItem.content !== newItem.content) {
-      const mentions = newItem.content.match(/@([a-zA-Z0-9_.-]+)/g) || [];
+      const mentions: string[] = newItem.content.match(/@([a-zA-Z0-9_.-]+)/g) || [];
       // To be accurate we should only notify on NEW mentions, but for simplicity we'll just check if it's there
       // A more robust implementation would diff the mentions.
 
-      const oldMentions = oldItem ? (oldItem.content.match(/@([a-zA-Z0-9_.-]+)/g) || []) : [];
+      const oldMentions: string[] = oldItem ? (oldItem.content.match(/@([a-zA-Z0-9_.-]+)/g) || []) : [];
 
-      const newUniqueMentions = mentions.filter(m => !oldMentions.includes(m));
+      const newUniqueMentions = mentions.filter((m: string) => !oldMentions.includes(m));
 
       for (const mention of newUniqueMentions) {
         const mentionedUser = mention.substring(1); // remove @
         if (mentionedUser !== currentUser) {
           notifications.push({
-            id: \`notif-\${Date.now()}-\${Math.random().toString(36).substring(2, 9)}\`,
+            id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
             type: 'mention',
-            title: \`You were mentioned in \${newItem.id}\`,
-            message: \`\${currentUser || 'Someone'} mentioned you in the description of "\${newItem.title}"\`,
+            title: `You were mentioned in ${newItem.id}`,
+            message: `${currentUser || 'Someone'} mentioned you in the description of "${newItem.title}"`,
             targetId: newItem.id,
             actor: currentUser || 'System',
           recipient: newItem.assignee!,

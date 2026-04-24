@@ -26,8 +26,28 @@ export interface WorkspaceConfig {
   types: string[];
   statuses: string[];
   users: string[];
+  auth?: WorkspaceAuth; // Optional authentication settings
 }
 
+export interface WorkspaceAuth {
+  enabled: boolean;
+  requirePassword: boolean;
+  lockAfterMinutes?: number;
+}
+
+export interface User {
+  id: string;
+  displayName: string;
+  email?: string;
+  githubHandle?: string;
+}
+
+export interface AuthSession {
+  isAuthenticated: boolean;
+  user: User | null;
+  workspacePath: string | null;
+  lockedAt?: string;
+}
 
 export interface Notification {
   id: string;

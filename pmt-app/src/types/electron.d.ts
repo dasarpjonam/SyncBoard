@@ -11,6 +11,16 @@ declare global {
       deleteFile: (filePath: string) => Promise<boolean>;
       ensureDir: (dirPath: string) => Promise<boolean>;
       isDirectory: (filePath: string) => Promise<boolean>;
+      
+      // Git integration
+      gitGetUserInfo: () => Promise<{ name: string; email: string; github?: string } | null>;
+      
+      // Authentication
+      authCheckWorkspaceAuth: (workspacePath: string) => Promise<{ enabled: boolean; requirePassword: boolean } | null>;
+      authSetWorkspacePassword: (workspacePath: string, passwordHash: string, salt: string) => Promise<boolean>;
+      authVerifyWorkspacePassword: (workspacePath: string, passwordHash: string) => Promise<boolean>;
+      authGetPasswordSalt: (workspacePath: string) => Promise<string | null>;
+      authDisableWorkspaceAuth: (workspacePath: string) => Promise<boolean>;
     };
   }
 }

@@ -41,6 +41,50 @@ if (!window.electronAPI) {
     deleteFile: async () => true,
     ensureDir: async () => true,
     isDirectory: async () => false,
+    
+    // Git integration
+    gitGetUserInfo: async () => ({
+      name: 'Demo User',
+      email: 'demo@example.com',
+      github: 'demouser'
+    }),
+    
+    // Authentication - persist mock state in localStorage for consistency
+    authCheckWorkspaceAuth: async (workspacePath: string) => {
+      const authKey = `mock_auth_${workspacePath}`;
+      const authData = localStorage.getItem(authKey);
+      if (!authData) return null;
+      return JSON.parse(authData);
+    },
+    authSetWorkspacePassword: async (workspacePath: string, passwordHash: string, salt: string) => {
+      const authKey = `mock_auth_${workspacePath}`;
+      localStorage.setItem(authKey, JSON.stringify({
+        enabled: true,
+        requirePassword: true,
+        passwordHash,
+        salt
+      }));
+      return true;
+    },
+    authVerifyWorkspacePassword: async (workspacePath: string, passwordHash: string) => {
+      const authKey = `mock_auth_${workspacePath}`;
+      const authData = localStorage.getItem(authKey);
+      if (!authData) return false;
+      const parsed = JSON.parse(authData);
+      return parsed.passwordHash === passwordHash;
+    },
+    authGetPasswordSalt: async (workspacePath: string) => {
+      const authKey = `mock_auth_${workspacePath}`;
+      const authData = localStorage.getItem(authKey);
+      if (!authData) return null;
+      const parsed = JSON.parse(authData);
+      return parsed.salt || null;
+    },
+    authDisableWorkspaceAuth: async (workspacePath: string) => {
+      const authKey = `mock_auth_${workspacePath}`;
+      localStorage.removeItem(authKey);
+      return true;
+    },
   };
   
   // Auto-initialize workspace in dev mode

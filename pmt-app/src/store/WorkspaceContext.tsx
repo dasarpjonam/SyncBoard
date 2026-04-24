@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { WorkItem, WorkspaceConfig } from '../types';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { WorkItem, WorkspaceConfig, User, AuthSession } from '../types';
 import { buildTree, getDescendants } from '../lib/hierarchy';
 import { LLMProvider } from '../lib/llm-providers';
 import { ITEMS_FOLDER } from '../lib/constants';
@@ -8,6 +8,7 @@ import { Notification } from '../types';
 import { NotificationManager } from '../lib/notification-manager';
 import { LiveContextManager } from '../lib/live-context';
 import { evaluateTriggers } from '../lib/notification-triggers';
+import { WorkspaceAuthManager } from '../lib/auth';
 
 interface WorkspaceContextProps {
   notifications: Notification[];
@@ -23,6 +24,8 @@ interface WorkspaceContextProps {
   llmApiKeys: Record<LLMProvider, string>;
   llmModel: string | null;
   currentUser: string | null;
+  authSession: AuthSession | null;
+  isLocked: boolean;
   setWorkspacePath: (path: string | null) => void;
   setItems: (items: WorkItem[]) => void;
   addItem: (item: WorkItem, parentId?: string) => void;
@@ -37,6 +40,9 @@ interface WorkspaceContextProps {
   setCurrentUser: (user: string | null) => void;
   saveConfig: (newConfig: WorkspaceConfig) => Promise<void>;
   loadWorkspace: (path: string) => Promise<void>;
+  unlockWorkspace: (user: User) => void;
+  lockWorkspace: () => void;
+  checkWorkspaceAuth: (path: string) => Promise<{ enabled: boolean; requirePassword: boolean } | null>;
 }
 
 const DEFAULT_CONFIG: WorkspaceConfig = {
@@ -68,6 +74,15 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Auth state
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
+    return WorkspaceAuthManager.getSession();
+  });
+  const [isLocked, setIsLocked] = useState<boolean>(!authSession?.isAuthenticated);
+  
+  // Track auto-lock cleanup function
+  const autoLockCleanupRef = useRef<(() => void) | null>(null);
+
   // Initialize managers lazily when needed
   const getNotificationManager = () => workspacePath ? new NotificationManager(workspacePath, window.electronAPI) : null;
   const getLiveContextManager = () => workspacePath ? new LiveContextManager(workspacePath, window.electronAPI) : null;
@@ -77,6 +92,25 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     setItemsTree(buildTree(items));
   }, [items]);
+
+  // Cleanup auto-lock timer when component unmounts
+  useEffect(() => {
+    return () => {
+      if (autoLockCleanupRef.current) {
+        autoLockCleanupRef.current();
+        autoLockCleanupRef.current = null;
+      }
+    };
+  }, []);
+
+  // Validate auth session when workspace changes - lock if workspace mismatch
+  useEffect(() => {
+    const session = WorkspaceAuthManager.getSession();
+    if (session && session.workspacePath !== workspacePath) {
+      // Session is for a different workspace - lock automatically
+      lockWorkspace();
+    }
+  }, [workspacePath, lockWorkspace]);
 
   useEffect(() => {
     if (workspacePath && currentUser) {
@@ -329,14 +363,56 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const checkWorkspaceAuth = useCallback(async (path: string): Promise<{ enabled: boolean; requirePassword: boolean } | null> => {
+    return await window.electronAPI.authCheckWorkspaceAuth(path);
+  }, []);
+
+  const lockWorkspace = useCallback(() => {
+    // Cleanup auto-lock timer if it exists
+    if (autoLockCleanupRef.current) {
+      autoLockCleanupRef.current();
+      autoLockCleanupRef.current = null;
+    }
+    
+    WorkspaceAuthManager.lockWorkspace();
+    setAuthSession(WorkspaceAuthManager.getSession());
+    setIsLocked(true);
+  }, []);
+
+  const unlockWorkspace = useCallback((user: User) => {
+    if (!workspacePath) return;
+    
+    // Cleanup any existing auto-lock timer before setting up a new one
+    if (autoLockCleanupRef.current) {
+      autoLockCleanupRef.current();
+      autoLockCleanupRef.current = null;
+    }
+    
+    const session = WorkspaceAuthManager.createSession(user, workspacePath);
+    setAuthSession(session);
+    setIsLocked(false);
+    
+    // Set current user from authenticated user
+    setCurrentUser(user.displayName);
+    
+    // Setup auto-lock if configured
+    if (config.auth?.lockAfterMinutes) {
+      autoLockCleanupRef.current = WorkspaceAuthManager.setupAutoLock(config.auth.lockAfterMinutes, () => {
+        lockWorkspace();
+      });
+    }
+  }, [workspacePath, config.auth?.lockAfterMinutes, lockWorkspace, setCurrentUser]);
+
   return (
     <WorkspaceContext.Provider value={{
       notifications, unreadCount, markNotificationsAsRead, markNotificationAsRead,
       workspacePath, items, itemsTree, config, apiKey, currentUser,
       llmProvider, llmApiKeys, llmModel,
+      authSession, isLocked,
       setWorkspacePath: setWorkspacePathPersist, setItems, addItem, updateItem, deleteItem, changeParent,
       setConfig, setApiKey, setCurrentUser, saveConfig, loadWorkspace,
-      setLLMProvider, setLLMApiKey, setLLMModel
+      setLLMProvider, setLLMApiKey, setLLMModel,
+      unlockWorkspace, lockWorkspace, checkWorkspaceAuth
     }}>
       {children}
     </WorkspaceContext.Provider>
