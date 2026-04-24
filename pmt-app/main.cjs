@@ -224,9 +224,11 @@ app.whenReady().then(() => {
   // Auth handlers
   ipcMain.handle('auth:checkWorkspaceAuth', async (event, workspacePath) => {
     try {
-      // Security: verify path is within current workspace
-      if (!currentWorkspacePath || workspacePath !== currentWorkspacePath) {
-        throw new Error('Unauthorized workspace access');
+      // Security: verify path is in authorized paths (less strict than other auth handlers)
+      // This is a read-only check operation needed during workspace loading
+      if (!authorizedPaths.has(workspacePath)) {
+        console.warn('Attempted to check auth for unauthorized workspace:', workspacePath);
+        return null;
       }
       
       const authPath = path.join(workspacePath, '.syncboard', '.auth');
@@ -279,9 +281,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('auth:verifyWorkspacePassword', async (event, workspacePath, passwordHash) => {
     try {
-      // Security: verify path is within current workspace
-      if (!currentWorkspacePath || workspacePath !== currentWorkspacePath) {
-        throw new Error('Unauthorized workspace access');
+      // Security: verify path is in authorized paths (needed during unlock flow)
+      if (!authorizedPaths.has(workspacePath)) {
+        console.warn('Attempted to verify password for unauthorized workspace:', workspacePath);
+        return false;
       }
       
       const authPath = path.join(workspacePath, '.syncboard', '.auth');
@@ -299,9 +302,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('auth:getPasswordSalt', async (event, workspacePath) => {
     try {
-      // Security: verify path is within current workspace
-      if (!currentWorkspacePath || workspacePath !== currentWorkspacePath) {
-        throw new Error('Unauthorized workspace access');
+      // Security: verify path is in authorized paths (needed during unlock flow)
+      if (!authorizedPaths.has(workspacePath)) {
+        console.warn('Attempted to get salt for unauthorized workspace:', workspacePath);
+        return null;
       }
       
       const authPath = path.join(workspacePath, '.syncboard', '.auth');
