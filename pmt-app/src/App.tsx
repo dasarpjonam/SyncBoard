@@ -101,8 +101,9 @@ function AppContent() {
     unlockWorkspace(user);
   };
 
-  // Show lock screen if workspace requires auth and is locked
-  if (workspacePath && authRequired && isLocked) {
+  // Show lock screen if workspace requires auth and is locked, OR if auth state is still loading (null)
+  // This prevents briefly showing unlocked content before auth check completes
+  if (workspacePath && (authRequired === null || (authRequired && isLocked))) {
     return (
       <div className="h-screen w-full">
         <LockScreen

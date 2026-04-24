@@ -8,7 +8,7 @@ const DRAWER_WIDTH = 240;
 const DRAWER_WIDTH_COLLAPSED = 72;
 
 export function Sidebar() {
-  const { workspacePath, loadWorkspace, lockWorkspace, authSession } = useWorkspace();
+  const { workspacePath, loadWorkspace, lockWorkspace, authSession, config } = useWorkspace();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -155,8 +155,8 @@ export function Sidebar() {
           </ListItemButton>
         </Tooltip>
 
-        {/* Lock Workspace button - only show if authenticated */}
-        {authSession?.isAuthenticated && (
+        {/* Lock Workspace button - only show if workspace has auth enabled and user is authenticated */}
+        {config.auth?.enabled && authSession?.isAuthenticated && (
           <Tooltip title={collapsed ? 'Lock Workspace' : ''} placement="right">
             <ListItemButton
               onClick={lockWorkspace}

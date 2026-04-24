@@ -5,12 +5,13 @@ export class WorkspaceAuthManager {
   private static LOCK_TIMEOUT_KEY = 'workspace_lock_timeout';
   
   /**
-   * Create an authenticated session
+   * Create an authenticated session scoped to a workspace
    */
-  static createSession(user: User): AuthSession {
+  static createSession(user: User, workspacePath: string): AuthSession {
     const session: AuthSession = {
       isAuthenticated: true,
       user,
+      workspacePath,
     };
     
     // Store in session storage (cleared on app close)
@@ -110,14 +111,33 @@ export class WorkspaceAuthManager {
   }
 
   /**
-   * Hash password using Web Crypto API
+   * Hash password using PBKDF2 with high iteration count
    */
   static async hashPassword(password: string, salt?: string): Promise<{ hash: string; salt: string }> {
     const encoder = new TextEncoder();
     const useSalt = salt || this.generateSalt();
-    const data = encoder.encode(password + useSalt);
     
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    // Import password as key material
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+    
+    // Derive key using PBKDF2 with 100,000 iterations
+    const hashBuffer = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: encoder.encode(useSalt),
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      256  // 256 bits = 32 bytes
+    );
+    
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     

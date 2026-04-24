@@ -33,7 +33,7 @@ SyncBoard follows a **clear separation of concerns**:
 
 ### 🔐 Workspace Password Protection
 - Optional password protection for workspaces
-- Encrypted password storage using SHA-256 hashing with salt
+- Secure password storage using PBKDF2 key derivation (100,000 iterations) with salt
 - Secure storage in `.syncboard/.auth` file
 - No network dependencies - fully offline
 
@@ -70,7 +70,7 @@ SyncBoard follows a **clear separation of concerns**:
 
 ### Modified Files
 1. **`pmt-app/src/types/index.ts`**
-   - Added `WorkspaceAuth`, `User`, `AuthSession`, `WorkspacePermissions` interfaces
+   - Added `WorkspaceAuth`, `User`, `AuthSession` interfaces
    - Extended `WorkspaceConfig` with optional `auth` field
 
 2. **`pmt-app/src/types/electron.d.ts`**
@@ -132,7 +132,7 @@ SyncBoard follows a **clear separation of concerns**:
 - ✅ User identity tracking (from git config)
 - ✅ Session management (in-memory only)
 - ✅ Offline-only authentication
-- ✅ Encrypted password storage (SHA-256 + salt)
+- ✅ Secure password storage (PBKDF2 key derivation with 100,000 iterations + salt)
 
 **What External Sync Provides:**
 - ✅ File access control (who can see the workspace folder)

@@ -97,7 +97,7 @@ cat ~/test-workspace/.syncboard/.auth
 **Pass Criteria:**
 - ✅ Password created successfully
 - ✅ Workspace unlocked
-- ✅ `.auth` file exists with encrypted data
+- ✅ `.auth` file exists and contains a password hash and salt
 
 ---
 

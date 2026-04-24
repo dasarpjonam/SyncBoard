@@ -13,7 +13,7 @@ describe('WorkspaceAuthManager', () => {
   });
 
   describe('createSession', () => {
-    it('should create a session with authenticated user', () => {
+    it('should create a session with authenticated user and workspace path', () => {
       const user: User = {
         id: 'test@example.com',
         displayName: 'Test User',
@@ -21,10 +21,11 @@ describe('WorkspaceAuthManager', () => {
         githubHandle: 'testuser',
       };
 
-      const session = WorkspaceAuthManager.createSession(user);
+      const session = WorkspaceAuthManager.createSession(user, '/test/workspace');
 
       expect(session.isAuthenticated).toBe(true);
       expect(session.user).toEqual(user);
+      expect(session.workspacePath).toBe('/test/workspace');
       expect(session.lockedAt).toBeUndefined();
     });
 
@@ -34,7 +35,7 @@ describe('WorkspaceAuthManager', () => {
         displayName: 'Test User',
       };
 
-      WorkspaceAuthManager.createSession(user);
+      WorkspaceAuthManager.createSession(user, '/test/workspace');
 
       const stored = sessionStorage.getItem('workspace_auth_session');
       expect(stored).toBeTruthy();
@@ -42,6 +43,7 @@ describe('WorkspaceAuthManager', () => {
       const parsed = JSON.parse(stored!);
       expect(parsed.isAuthenticated).toBe(true);
       expect(parsed.user.displayName).toBe('Test User');
+      expect(parsed.workspacePath).toBe('/test/workspace');
     });
   });
 
@@ -57,12 +59,13 @@ describe('WorkspaceAuthManager', () => {
         displayName: 'Test User',
       };
 
-      WorkspaceAuthManager.createSession(user);
+      WorkspaceAuthManager.createSession(user, '/test/workspace');
       const retrieved = WorkspaceAuthManager.getSession();
 
       expect(retrieved).toBeTruthy();
       expect(retrieved?.isAuthenticated).toBe(true);
       expect(retrieved?.user?.displayName).toBe('Test User');
+      expect(retrieved?.workspacePath).toBe('/test/workspace');
     });
 
     it('should handle corrupted session data gracefully', () => {
@@ -79,7 +82,7 @@ describe('WorkspaceAuthManager', () => {
         displayName: 'Test User',
       };
 
-      WorkspaceAuthManager.createSession(user);
+      WorkspaceAuthManager.createSession(user, '/test/workspace');
       expect(sessionStorage.getItem('workspace_auth_session')).toBeTruthy();
 
       WorkspaceAuthManager.clearSession();
@@ -94,7 +97,7 @@ describe('WorkspaceAuthManager', () => {
         displayName: 'Test User',
       };
 
-      WorkspaceAuthManager.createSession(user);
+      WorkspaceAuthManager.createSession(user, '/test/workspace');
       WorkspaceAuthManager.lockWorkspace();
 
       const session = WorkspaceAuthManager.getSession();
@@ -109,7 +112,7 @@ describe('WorkspaceAuthManager', () => {
         email: 'test@example.com',
       };
 
-      WorkspaceAuthManager.createSession(user);
+      WorkspaceAuthManager.createSession(user, '/test/workspace');
       WorkspaceAuthManager.lockWorkspace();
 
       const session = WorkspaceAuthManager.getSession();

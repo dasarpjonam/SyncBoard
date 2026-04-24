@@ -18,6 +18,9 @@ export function LockScreen({ workspacePath, requirePassword, onUnlock, onCancel 
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [autoDetectedUser, setAutoDetectedUser] = useState<User | null>(null);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualEmail, setManualEmail] = useState('');
 
   React.useEffect(() => {
     // Auto-detect git user
@@ -26,9 +29,34 @@ export function LockScreen({ workspacePath, requirePassword, onUnlock, onCancel 
         const user = WorkspaceAuthManager.createUserFromGit(gitUser);
         setAutoDetectedUser(user);
         setSelectedUser(user);
+      } else {
+        // Git detection failed, show manual entry
+        setShowManualEntry(true);
       }
+    }).catch((err) => {
+      console.error('Failed to auto-detect git user:', err);
+      // Git detection failed, show manual entry
+      setShowManualEntry(true);
     });
   }, []);
+
+  const handleManualUserSubmit = () => {
+    if (!manualName.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+    
+    const email = manualEmail.trim() || `${manualName.toLowerCase().replace(/\s+/g, '.')}@local`;
+    const user = WorkspaceAuthManager.createUserFromGit({
+      name: manualName.trim(),
+      email,
+      github: undefined
+    } as any);
+    
+    setSelectedUser(user);
+    setShowManualEntry(false);
+    setError('');
+  };
 
   const handleUnlock = async () => {
     setError('');
@@ -166,13 +194,15 @@ export function LockScreen({ workspacePath, requirePassword, onUnlock, onCancel 
               {loading ? 'Creating...' : 'Create Password'}
             </button>
 
-            <button
-              onClick={handleSkipPassword}
-              disabled={loading}
-              className="w-full py-2 text-gray-600 hover:text-gray-800 text-sm"
-            >
-              Skip - Unlock without password
-            </button>
+            {!requirePassword && (
+              <button
+                onClick={handleSkipPassword}
+                disabled={loading}
+                className="w-full py-2 text-gray-600 hover:text-gray-800 text-sm"
+              >
+                Skip - Unlock without password
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -200,6 +230,45 @@ export function LockScreen({ workspacePath, requirePassword, onUnlock, onCancel 
         )}
 
         <div className="space-y-4">
+          {/* Manual user entry when git detection fails */}
+          {showManualEntry && !selectedUser && (
+            <div className="border rounded-lg p-4 bg-yellow-50 border-yellow-200">
+              <div className="mb-3">
+                <p className="text-sm text-yellow-800 font-medium mb-3">
+                  ⚠️ Git user not detected. Please enter your information:
+                </p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name *
+                </label>
+                <input
+                  type="text"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder="Enter your name"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email (optional)
+                </label>
+                <input
+                  type="email"
+                  value={manualEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                  placeholder="your.email@example.com"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <button
+                onClick={handleManualUserSubmit}
+                className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              >
+                Continue
+              </button>
+            </div>
+          )}
+
           {/* User selection */}
           {autoDetectedUser && (
             <div className="border rounded-lg p-4 bg-gray-50">

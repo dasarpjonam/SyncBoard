@@ -45,6 +45,7 @@ export interface User {
 export interface AuthSession {
   isAuthenticated: boolean;
   user: User | null;
+  workspacePath: string | null;
   lockedAt?: string;
 }
 
