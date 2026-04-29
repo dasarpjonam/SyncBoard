@@ -1,222 +1,463 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { useChat } from '@ai-sdk/react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useWorkspace } from '../store/WorkspaceContext';
-import { callLLM } from '../lib/llm-providers';
-import { generateWorkItemId } from '../lib/id-generator';
-import { ITEMS_FOLDER } from '../lib/constants';
+import { ChatMessage, ChatContentBlock, ToolContext, SlashCommandInfo } from '../types/chat';
+import { WorkItem } from '../types';
+import { createToolRegistry } from '../lib/tools';
+import { runAgentLoop } from '../lib/agent-loop';
+import { parseSlashCommand, parseSlashArgs, getAvailableCommands } from '../lib/slash-commands';
+import { buildLLMContext } from '../lib/context-builder';
+import { MessageRenderer } from './chat/MessageRenderer';
+import { SlashCommandMenu } from './chat/SlashCommandMenu';
 
-export function ChatInterface() {
-  const { 
+let messageIdCounter = 0;
+function nextMessageId(): string {
+  return `msg-${Date.now()}-${messageIdCounter++}`;
+}
+
+/**
+ * Generate contextual follow-up suggestions based on the last tool that ran.
+ */
+function getFollowUps(lastToolName?: string): string[] {
+  switch (lastToolName) {
+    case 'search_items':
+      return ['Summarize these results', '/summary', 'Show blocked items'];
+    case 'get_project_summary':
+      return ['Show items In Progress', 'List all bugs', 'Who has the most tasks?'];
+    case 'create_work_item':
+      return ['/summary', 'Create another item', 'Show all my items'];
+    case 'update_work_item':
+      return ['/summary', 'Show updated item'];
+    case 'list_items':
+      return ['Summarize these', '/summary', 'Create a new task'];
+    case 'get_item_detail':
+      return ['Update this item', 'Show children', '/summary'];
+    default:
+      return ['/summary', '/search', '/list status:In Progress'];
+  }
+}
+
+interface ChatInterfaceProps {
+  currentWorkItem?: WorkItem;
+}
+
+export function ChatInterface({ currentWorkItem }: ChatInterfaceProps = {}) {
+  const {
     items, config, workspacePath,
     apiKey, llmProvider, llmApiKeys, llmModel,
-    addItem, updateItem 
+    addItem, updateItem, deleteItem
   } = useWorkspace();
+
+  const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // In a real desktop app with @ai-sdk/react using API keys securely, we would typically handle the LLM call in the main process
-  // or a local node server. But since this is a frontend-only desktop app without a separate backend,
-  // we can use standard fetch to the LLM API directly using our multi-provider abstraction.
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [slashFilter, setSlashFilter] = useState('');
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: '/api/chat', // UseChat expects api even if we override fetch
-    onError: (error) => {
-      console.error('Chat error:', error);
-      setError(error.message || 'Failed to communicate with LLM API');
-    },
-    fetch: async (url: RequestInfo | URL, options: any) => {
-      setError(null);
-      
-      const currentApiKey = llmApiKeys[llmProvider];
-      if (!currentApiKey) {
-        const providerName = llmProvider === 'claude' ? 'Claude (Anthropic)' : 
-                           llmProvider === 'chatgpt' ? 'ChatGPT (OpenAI)' : 
-                           'Gemini (Google)';
-        const errorMsg = `Please set your ${providerName} API key in Settings first.`;
-        setError(errorMsg);
-        throw new Error(errorMsg);
+  // Create tool registry once
+  const toolRegistry = useMemo(() => createToolRegistry(), []);
+  const slashCommands = useMemo(() => getAvailableCommands(toolRegistry), [toolRegistry]);
+
+  // Build tool context from current workspace state
+  const buildToolContext = useCallback((): ToolContext => ({
+    items,
+    config,
+    workspacePath: workspacePath || '',
+    addItem,
+    updateItem,
+    deleteItem,
+    electronAPI: window.electronAPI,
+  }), [items, config, workspacePath, addItem, updateItem, deleteItem]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Handle input changes — detect slash command menu trigger
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInput(value);
+
+    if (value.startsWith('/')) {
+      const afterSlash = value.slice(1);
+      // Only show menu if we haven't added a space after a valid command
+      if (!afterSlash.includes(' ')) {
+        setShowSlashMenu(true);
+        setSlashFilter(afterSlash);
+      } else {
+        setShowSlashMenu(false);
       }
+    } else {
+      setShowSlashMenu(false);
+    }
+  };
 
-      try {
-        // Parse the incoming request
-        const body = JSON.parse(options?.body as string);
+  // Handle slash command selection from the menu
+  const handleSlashSelect = (cmd: SlashCommandInfo) => {
+    setInput(`/${cmd.name} `);
+    setShowSlashMenu(false);
+    inputRef.current?.focus();
+  };
 
-        const { defineTools } = await import('../lib/llm-tools');
-        const { buildLLMContext } = await import('../lib/context-builder');
+  // Navigate to a work item when an ItemCard is clicked
+  const handleNavigateToItem = (item: WorkItem) => {
+    navigate(`/workspace/item/${item.id}`);
+  };
 
-        // Get last user message for context building
-        const lastUserMessage = body.messages.filter((m: any) => m.role === 'user').pop();
-        const query = lastUserMessage?.content || '';
+  // Insert a follow-up suggestion or send it directly
+  const handleSendMessage = useCallback((text: string) => {
+    setInput(text);
+    // Auto-submit if it starts with /
+    if (text.startsWith('/')) {
+      setTimeout(() => {
+        const form = document.getElementById('chat-form');
+        form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }, 50);
+    } else {
+      inputRef.current?.focus();
+    }
+  }, []);
 
-        // Build optimized context (token-efficient)
-        const workspaceContext = buildLLMContext(items, config, query, 3000);
+  // ─── Core Submit Handler ────────────────────────────────────────
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const userInput = input.trim();
+    if (!userInput || isLoading) return;
+
+    setInput('');
+    setShowSlashMenu(false);
+    setIsLoading(true);
+
+    // Add user message
+    const userMessage: ChatMessage = {
+      id: nextMessageId(),
+      role: 'user',
+      blocks: [{ type: 'markdown', content: userInput }],
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    // Create a mutable assistant message we'll build up
+    const assistantId = nextMessageId();
+    const assistantBlocks: ChatContentBlock[] = [];
+
+    const pushBlock = (block: ChatContentBlock) => {
+      assistantBlocks.push(block);
+      setMessages(prev => {
+        const existing = prev.find(m => m.id === assistantId);
+        if (existing) {
+          return prev.map(m =>
+            m.id === assistantId ? { ...m, blocks: [...assistantBlocks] } : m
+          );
+        }
+        return [
+          ...prev,
+          {
+            id: assistantId,
+            role: 'assistant' as const,
+            blocks: [...assistantBlocks],
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      });
+    };
+
+    const toolContext = buildToolContext();
+    let lastToolName: string | undefined;
+
+    try {
+      // ── Check for slash command ──────────────────────────────
+      const slash = parseSlashCommand(userInput);
+
+      if (slash) {
+        const tool = toolRegistry.getToolBySlashCommand(slash.command);
+
+        if (tool) {
+          // Direct tool execution — no LLM needed
+          pushBlock({ type: 'tool-status', toolName: tool.definition.name, status: 'running' });
+
+          const args = parseSlashArgs(slash.rawArgs);
+          const result = await toolRegistry.execute(tool.definition.name, args, toolContext);
+          lastToolName = tool.definition.name;
+
+          // Replace the running status with done
+          assistantBlocks[assistantBlocks.length - 1] = {
+            type: 'tool-status',
+            toolName: tool.definition.name,
+            status: 'done',
+            result: result.data
+              ? `${Array.isArray(result.data) ? result.data.length + ' items' : '1 item'}`
+              : undefined,
+          };
+
+          // Add rich content from tool
+          if (result.richContent) {
+            result.richContent.forEach(block => assistantBlocks.push(block));
+          } else {
+            assistantBlocks.push({ type: 'markdown', content: result.summary });
+          }
+
+          // Add follow-ups
+          assistantBlocks.push({ type: 'follow-ups', suggestions: getFollowUps(lastToolName) });
+
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === assistantId ? { ...m, blocks: [...assistantBlocks] } : m
+            )
+          );
+        } else {
+          // Unknown slash command — tell user
+          pushBlock({
+            type: 'error',
+            message: `Unknown command "/${slash.command}". Available: ${slashCommands.map(c => `/${c.name}`).join(', ')}`,
+          });
+        }
+      } else {
+        // ── Free-form query → agent loop ──────────────────────
+        const currentApiKey = llmApiKeys[llmProvider];
+        if (!currentApiKey) {
+          const providerName =
+            llmProvider === 'claude'
+              ? 'Claude (Anthropic)'
+              : llmProvider === 'chatgpt'
+                ? 'ChatGPT (OpenAI)'
+                : 'Gemini (Google)';
+          pushBlock({
+            type: 'error',
+            message: `Please set your ${providerName} API key in Settings first.`,
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // Build system prompt (lean — agent uses tools for data)
         let liveContext = '';
         try {
-          liveContext = await window.electronAPI.readFile(`${workspacePath}/project_context.md`) || '';
-        } catch(e) {}
+          liveContext = (await window.electronAPI.readFile(`${workspacePath}/project_context.md`)) || '';
+        } catch (_) {}
 
+        let currentItemContext = '';
+        if (currentWorkItem) {
+          currentItemContext = `
+CURRENTLY VIEWING WORK ITEM:
+- ID: ${currentWorkItem.id}
+- Title: ${currentWorkItem.title}
+- Type: ${currentWorkItem.type}
+- Status: ${currentWorkItem.status}
+- Assignee: ${currentWorkItem.assignee || 'Unassigned'}
+- Content Preview: ${currentWorkItem.content.slice(0, 500)}${currentWorkItem.content.length > 500 ? '...' : ''}
+${currentWorkItem.parentId ? `- Parent ID: ${currentWorkItem.parentId}` : ''}
 
-        // Build system instruction
-        const systemPrompt = `You are an AI Program Management assistant.
+When the user asks about "this item" or "the current item", they're referring to the work item above.
+`;
+        }
+
+        // Build a brief context summary (not the full item dump)
+        const workspaceContext = buildLLMContext(items, config, userInput, 2000);
+
+        const systemPrompt = `You are an AI Program Management assistant with access to tools to search, create, update, and analyze work items.
 
 ${liveContext}
 
+${currentItemContext}
 
 ${workspaceContext}
 
 AVAILABLE ACTIONS:
 - Statuses: ${config.statuses.join(', ')}
 - Types: ${config.types.join(', ')}
+- Team Members: ${config.users.length > 0 ? config.users.join(', ') : 'None configured'}
 
-IMPORTANT RULES:
-1. Use create_work_item ONLY when the user explicitly asks to CREATE or ADD a new item
-2. Use update_work_item when the user wants to EDIT, UPDATE, MODIFY, CHANGE, or REASSIGN an existing item
-3. When the user references an item by ID (full or partial like "ending 2894"), look for it in REFERENCED ITEMS above
-4. Always use the FULL ID from REFERENCED ITEMS when calling update_work_item
-5. If updating an item, only change the fields the user mentions - leave other fields unchanged
+TOOL USAGE GUIDELINES:
+- Use search_items to find items by keyword, ID, or description before creating or updating.
+- Use get_item_detail to get full details of a specific item.
+- Use get_project_summary for overview/dashboard questions.
+- Use list_items to filter items by status, type, or assignee.
+- Use create_work_item ONLY when the user explicitly asks to CREATE or ADD a new item.
+- Use update_work_item when the user wants to EDIT, UPDATE, MODIFY, CHANGE, or REASSIGN an existing item.
+- When referencing items by partial ID (e.g., "ending 42" or "42"), search for them first.
+- Auto-correct status, type, and assignee to match the available values above.
+- Only change the fields the user explicitly mentions when updating.
 
-Use the provided tools to create or update work items.`;
+Always be concise and helpful. Reference item IDs in your responses.`;
 
-        // Convert messages to our standard format
-        const llmMessages = body.messages.map((m: any) => ({
-          role: m.role,
-          content: m.content
-        }));
+        // Build conversation from message history
+        const llmMessages = messages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .flatMap(m => {
+            const textContent = m.blocks
+              .filter(b => b.type === 'markdown')
+              .map(b => (b as { type: 'markdown'; content: string }).content)
+              .join('\n');
+            if (!textContent) return [];
+            return [{ role: m.role as 'user' | 'assistant', content: textContent }];
+          });
 
-        // Call the unified LLM provider
+        // Add the current user message
+        llmMessages.push({ role: 'user', content: userInput });
+
         const llmConfig = {
           provider: llmProvider,
           apiKey: currentApiKey,
-          model: llmModel || undefined
+          model: llmModel || undefined,
         };
 
-        const llmResponse = await callLLM(
+        // Run the agent loop
+        const steps = runAgentLoop(
           llmConfig,
           llmMessages,
           systemPrompt,
-          defineTools()
+          toolRegistry,
+          toolContext,
+          5
         );
 
-        let finalContent = llmResponse.content;
+        for await (const step of steps) {
+          switch (step.type) {
+            case 'progress':
+              pushBlock({ type: 'progress', message: step.message });
+              break;
 
-        // Process tool calls
-        if (llmResponse.toolCalls && llmResponse.toolCalls.length > 0) {
-          const { serializeMarkdownItem } = await import('../lib/markdown');
+            case 'tool_call':
+              pushBlock({ type: 'tool-status', toolName: step.toolName, status: 'running' });
+              break;
 
-          const results = await Promise.all(llmResponse.toolCalls.map(async (toolCall, index) => {
-            const funcName = toolCall.name;
-            const args = toolCall.args;
-
-            if (funcName === 'create_work_item') {
-              const id = generateWorkItemId(items);
-              const newItem = {
-                id,
-                title: args.title,
-                type: args.type || config.types[0],
-                status: args.status || config.statuses[0],
-                assignee: args.assignee,
-                content: args.content || '',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                fileName: `${id}.md`,
-              };
-
-              const content = serializeMarkdownItem(newItem);
-              await window.electronAPI.ensureDir(`${workspacePath}/${ITEMS_FOLDER}`);
-              await window.electronAPI.writeFile(`${workspacePath}/${ITEMS_FOLDER}/${newItem.fileName}`, content);
-              addItem(newItem);
-
-              return `I created a new ${newItem.type}: ${newItem.title} (ID: ${newItem.id})`;
-            } else if (funcName === 'update_work_item') {
-              const existingItem = items.find(i => i.id === args.id);
-              if (existingItem) {
-                const updatedItem = {
-                  ...existingItem,
-                  ...args,
-                  updatedAt: new Date().toISOString()
+            case 'tool_result': {
+              lastToolName = step.toolName;
+              // Update the last tool-status block from running → done
+              const lastIdx = assistantBlocks.findLastIndex(
+                b => b.type === 'tool-status' && (b as any).toolName === step.toolName && (b as any).status === 'running'
+              );
+              if (lastIdx >= 0) {
+                assistantBlocks[lastIdx] = {
+                  type: 'tool-status',
+                  toolName: step.toolName,
+                  status: 'done',
+                  result: step.summary.split('\n')[0].slice(0, 60),
                 };
-                const content = serializeMarkdownItem(updatedItem);
-                await window.electronAPI.writeFile(`${workspacePath}/${ITEMS_FOLDER}/${updatedItem.fileName}`, content);
-                updateItem(updatedItem);
-                return `I updated item ${args.id} successfully.`;
-              } else {
-                return `I could not find item with ID ${args.id}.`;
               }
+              // Add rich content from tool result
+              if (step.richContent) {
+                step.richContent.forEach(block => assistantBlocks.push(block));
+              }
+              // Update messages
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantId ? { ...m, blocks: [...assistantBlocks] } : m
+                )
+              );
+              break;
             }
-            return null;
-          }));
 
-          const toolResults = results.filter(Boolean).join(' ');
-          if (toolResults) {
-            finalContent = finalContent 
-              ? `${finalContent}\n\n${toolResults}` 
-              : toolResults;
+            case 'text':
+              // Remove any lingering progress blocks
+              const progressIndices: number[] = [];
+              assistantBlocks.forEach((b, i) => {
+                if (b.type === 'progress') progressIndices.push(i);
+              });
+              for (let i = progressIndices.length - 1; i >= 0; i--) {
+                assistantBlocks.splice(progressIndices[i], 1);
+              }
+              pushBlock({ type: 'markdown', content: step.content });
+              break;
+
+            case 'error':
+              pushBlock({ type: 'error', message: step.message });
+              break;
           }
         }
 
-        // Clean up content and ensure it's valid
-        finalContent = (finalContent || 'Action completed.').trim();
-
-        // Convert the static response into a format useChat can consume as a stream
-        const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode(finalContent));
-            controller.close();
-          }
-        });
-
-        return new Response(stream, { 
-          headers: { 'Content-Type': 'text/plain' },
-          status: 200
-        });
-      } catch (err: any) {
-        console.error('Chat error:', err);
-        setError(err.message || 'Failed to communicate with LLM API');
-        throw err;
+        // Add follow-up suggestions at the end
+        pushBlock({ type: 'follow-ups', suggestions: getFollowUps(lastToolName) });
       }
+    } catch (err: any) {
+      console.error('Chat error:', err);
+      pushBlock({ type: 'error', message: err.message || 'An unexpected error occurred.' });
+    } finally {
+      setIsLoading(false);
     }
-  });
+  };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // ─── Render ─────────────────────────────────────────────────────
+
+  const hasApiKey = !!llmApiKeys[llmProvider];
 
   return (
     <div className="w-80 border-l bg-white flex flex-col h-full">
-      <div className="p-4 border-b font-semibold bg-gray-50">PM Assistant</div>
-
-      <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-3">
-        {messages.length === 0 && (
-          <div className="text-gray-400 text-sm text-center mt-10">
-            Ask me anything about your project!
-          </div>
+      <div className="p-4 border-b font-semibold bg-gray-50 flex items-center justify-between">
+        <span>PM Assistant</span>
+        {messages.length > 0 && (
+          <button
+            onClick={() => setMessages([])}
+            className="text-xs text-gray-400 hover:text-gray-600"
+            title="Clear chat"
+          >
+            Clear
+          </button>
         )}
-        {messages.map(m => (
-          <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-            <div className={`max-w-[90%] p-2 rounded-lg text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'}`}>
-              {m.content}
+      </div>
+
+      <div className="flex-grow overflow-y-auto p-3 flex flex-col gap-3">
+        {messages.length === 0 && (
+          <div className="text-gray-400 text-sm text-center mt-10 space-y-3">
+            <div>Ask me anything about your project!</div>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {slashCommands.map(cmd => (
+                <button
+                  key={cmd.name}
+                  onClick={() => handleSendMessage(`/${cmd.name} `)}
+                  className="text-[11px] px-2 py-1 bg-gray-50 border border-gray-200 rounded text-gray-500 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
+                >
+                  /{cmd.name}
+                </button>
+              ))}
             </div>
           </div>
+        )}
+
+        {messages.map(m => (
+          <MessageRenderer
+            key={m.id}
+            message={m}
+            onNavigateToItem={handleNavigateToItem}
+            onSendMessage={handleSendMessage}
+          />
         ))}
-        {isLoading && <div className="text-gray-400 text-xs italic">Thinking...</div>}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-xs">
-            <strong>Error:</strong> {error}
+
+        {isLoading && messages[messages.length - 1]?.role === 'user' && (
+          <div className="flex items-center gap-2 text-xs text-gray-400 italic">
+            <span className="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            Thinking...
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="p-3 border-t bg-gray-50">
+      <form id="chat-form" onSubmit={handleSubmit} className="p-3 border-t bg-gray-50 relative">
+        <SlashCommandMenu
+          commands={slashCommands}
+          filter={slashFilter}
+          onSelect={handleSlashSelect}
+          visible={showSlashMenu}
+        />
         <input
+          ref={inputRef}
           className="w-full p-2 border rounded text-sm outline-none focus:border-blue-500"
           value={input}
-          placeholder="Ask a question or give a command..."
+          placeholder={hasApiKey ? 'Ask a question or type / for commands...' : 'Set API key in Settings...'}
           onChange={handleInputChange}
-          disabled={!apiKey || !workspacePath}
+          disabled={!workspacePath}
         />
-        {!apiKey && <div className="text-xs text-red-500 mt-1">API Key missing. Add in settings.</div>}
+        {!hasApiKey && workspacePath && (
+          <div className="text-xs text-red-500 mt-1">API Key missing. Add in Settings.</div>
+        )}
       </form>
     </div>
   );
