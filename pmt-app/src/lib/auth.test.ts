@@ -127,10 +127,11 @@ describe('WorkspaceAuthManager', () => {
         displayName: 'Test User',
       };
 
-      const session = WorkspaceAuthManager.unlockWorkspace(user);
+      const session = WorkspaceAuthManager.unlockWorkspace(user, '/test/workspace');
 
       expect(session.isAuthenticated).toBe(true);
       expect(session.user).toEqual(user);
+      expect(session.workspacePath).toBe('/test/workspace');
     });
   });
 

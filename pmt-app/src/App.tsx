@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useParams } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { ChatInterface } from './components/ChatInterface';
 import { WorkspaceView } from './views/WorkspaceView';
@@ -10,6 +10,23 @@ import { useWorkspace } from './store/WorkspaceContext';
 import { parseMarkdownItem } from './lib/markdown';
 import { ITEMS_FOLDER } from './lib/constants';
 import { WorkItem, User } from './types';
+
+// Wrapper component to access route context for ChatInterface
+function ChatWithContext() {
+  const location = useLocation();
+  const { items } = useWorkspace();
+  
+  // Extract item ID from path if we're on a work item page
+  const match = location.pathname.match(/\/workspace\/item\/([^/]+)/);
+  const itemId = match ? match[1] : null;
+  
+  // Find the current work item if we have an ID
+  const currentWorkItem = itemId && itemId !== 'new' 
+    ? items.find(item => item.id === itemId) 
+    : undefined;
+  
+  return <ChatInterface currentWorkItem={currentWorkItem} />;
+}
 
 function AppContent() {
   const { 
@@ -129,7 +146,7 @@ function AppContent() {
           </Routes>
         </main>
 
-        <ChatInterface />
+        <ChatWithContext />
       </div>
     </BrowserRouter>
   );

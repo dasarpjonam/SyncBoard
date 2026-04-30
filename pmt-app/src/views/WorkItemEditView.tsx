@@ -393,6 +393,12 @@ export function WorkItemEditView() {
               onMention={query => config.users?.filter(u => u.toLowerCase().includes(query.toLowerCase())) || []}
               placeholder="Write something..."
               workspacePath={workspacePath || undefined}
+              workItemMetadata={{
+                title: formData.title,
+                type: formData.type,
+                status: formData.status,
+                assignee: formData.assignee,
+              }}
             />
           </div>
 

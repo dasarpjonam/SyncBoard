@@ -277,3 +277,200 @@ async function callGemini(
 
   return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
 }
+
+// ─── Streaming API ──────────────────────────────────────────────
+
+export interface StreamLLMConfig {
+  provider: LLMProvider;
+  apiKey: string;
+  model?: string;
+  maxTokens?: number;
+}
+
+/**
+ * Stream text from an LLM provider, yielding chunks as they arrive.
+ * Used by autofill for progressive ghost text rendering.
+ * Does NOT support tool calls — text-only streaming.
+ */
+export async function* streamLLM(
+  config: StreamLLMConfig,
+  messages: LLMMessage[],
+  systemPrompt?: string
+): AsyncGenerator<string> {
+  const { provider, apiKey, model, maxTokens = 500 } = config;
+  const selectedModel = model || DEFAULT_MODELS[provider];
+
+  switch (provider) {
+    case 'claude':
+      yield* streamClaude(apiKey, selectedModel, messages, systemPrompt, maxTokens);
+      break;
+    case 'chatgpt':
+      yield* streamChatGPT(apiKey, selectedModel, messages, systemPrompt, maxTokens);
+      break;
+    case 'gemini':
+      yield* streamGemini(apiKey, selectedModel, messages, systemPrompt, maxTokens);
+      break;
+    default:
+      throw new Error(`Unsupported provider: ${provider}`);
+  }
+}
+
+// Parse SSE lines from a ReadableStream
+async function* parseSSEStream(response: Response): AsyncGenerator<string> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Split on double newlines (SSE event boundary) or single newlines
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data: ')) {
+          yield trimmed.slice(6);
+        }
+      }
+    }
+
+    // Flush remaining buffer
+    if (buffer.trim().startsWith('data: ')) {
+      yield buffer.trim().slice(6);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// Claude streaming
+async function* streamClaude(
+  apiKey: string,
+  model: string,
+  messages: LLMMessage[],
+  systemPrompt?: string,
+  maxTokens = 500
+): AsyncGenerator<string> {
+  const payload = convertMessagesToProvider(messages, 'claude', systemPrompt);
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      stream: true,
+      ...payload,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error?.message || `Claude API error: ${response.status}`);
+  }
+
+  for await (const data of parseSSEStream(response)) {
+    if (data === '[DONE]') break;
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+        yield parsed.delta.text;
+      }
+    } catch {
+      // Skip non-JSON lines (event types, etc.)
+    }
+  }
+}
+
+// ChatGPT streaming
+async function* streamChatGPT(
+  apiKey: string,
+  model: string,
+  messages: LLMMessage[],
+  systemPrompt?: string,
+  maxTokens = 500
+): AsyncGenerator<string> {
+  const payload = convertMessagesToProvider(messages, 'chatgpt', systemPrompt);
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      stream: true,
+      ...payload,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error?.message || `ChatGPT API error: ${response.status}`);
+  }
+
+  for await (const data of parseSSEStream(response)) {
+    if (data === '[DONE]') break;
+    try {
+      const parsed = JSON.parse(data);
+      const content = parsed.choices?.[0]?.delta?.content;
+      if (content) {
+        yield content;
+      }
+    } catch {
+      // Skip non-JSON lines
+    }
+  }
+}
+
+// Gemini streaming
+async function* streamGemini(
+  apiKey: string,
+  model: string,
+  messages: LLMMessage[],
+  systemPrompt?: string,
+  maxTokens = 500
+): AsyncGenerator<string> {
+  const payload = convertMessagesToProvider(messages, 'gemini', systemPrompt);
+
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      generationConfig: { maxOutputTokens: maxTokens },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error?.message || `Gemini API error: ${response.status}`);
+  }
+
+  for await (const data of parseSSEStream(response)) {
+    if (data === '[DONE]') break;
+    try {
+      const parsed = JSON.parse(data);
+      const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        yield text;
+      }
+    } catch {
+      // Skip non-JSON lines
+    }
+  }
+}
