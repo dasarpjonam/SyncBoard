@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
@@ -19,6 +19,9 @@ import { EditorToolbar } from './EditorToolbar';
 import { BubbleMenuToolbar } from './BubbleMenuToolbar';
 import { SlashCommandMenu, slashCommands, SlashCommand } from './SlashCommands';
 import { AutoSaveIndicator, SaveStatus } from './AutoSaveIndicator';
+import { useWorkspace } from '../store/WorkspaceContext';
+import { generateDescriptionRewrite, WorkItemMetadata } from '../lib/llm-autofill';
+import { Sparkles, ChevronDown, X } from 'lucide-react';
 
 // Create lowlight instance with common languages
 const lowlight = createLowlight(common);
@@ -33,6 +36,7 @@ interface Props {
   saveStatus?: SaveStatus;
   lastSavedAt?: Date;
   workspacePath?: string;
+  workItemMetadata?: WorkItemMetadata;
 }
 
 export function RichEditor({
@@ -45,12 +49,19 @@ export function RichEditor({
   saveStatus = 'idle',
   lastSavedAt,
   workspacePath,
+  workItemMetadata,
 }: Props) {
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashMenuPosition, setSlashMenuPosition] = useState({ top: 0, left: 0 });
   const [slashQuery, setSlashQuery] = useState('');
   const [viewMode, setViewMode] = useState<'rich' | 'markdown'>('rich');
   const [markdownText, setMarkdownText] = useState(content);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
+  const cancelRef = useRef(false);
+
+  // Get LLM settings from workspace context
+  const { llmProvider, llmApiKeys, llmModel } = useWorkspace();
 
   // Handle image upload to workspace
   const handleImageUpload = useCallback(
@@ -97,6 +108,7 @@ export function RichEditor({
     },
     [workspacePath]
   );
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -415,6 +427,96 @@ export function RichEditor({
     };
   }, [editor, showSlashMenu]);
 
+  // Handle description rewrite using AI Assist
+  const handleRewriteDescription = useCallback(async () => {
+    if (isRewriting) {
+      cancelRef.current = true;
+      return;
+    }
+
+    const currentApiKey = llmApiKeys[llmProvider];
+    if (!currentApiKey) {
+      setRewriteError('Please configure your LLM API key in Settings');
+      setTimeout(() => setRewriteError(null), 3000);
+      return;
+    }
+
+    setIsRewriting(true);
+    setRewriteError(null);
+    cancelRef.current = false;
+
+    try {
+      let fullText = '';
+      
+      if (viewMode === 'rich' && editor) {
+        fullText = editor.getText();
+      } else {
+        fullText = markdownText;
+      }
+
+      // Collect all rewritten text
+      let rewritten = '';
+
+      for await (const chunk of generateDescriptionRewrite({
+        provider: llmProvider,
+        apiKey: currentApiKey,
+        model: llmModel || undefined,
+        contextBefore: fullText,
+        contextAfter: '',
+        workItemMetadata,
+      })) {
+        if (cancelRef.current) break;
+        rewritten += chunk;
+      }
+
+      // Replace all content with rewritten version
+      if (!cancelRef.current && rewritten.trim()) {
+        if (viewMode === 'rich' && editor) {
+          editor.chain().focus().selectAll().deleteSelection().insertContent(rewritten).run();
+        } else {
+          setMarkdownText(rewritten);
+          onChange(rewritten);
+        }
+      }
+    } catch (error) {
+      console.error('[Description Rewrite] Error:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Rewrite failed';
+      setRewriteError(errorMsg);
+      setTimeout(() => setRewriteError(null), 5000);
+    } finally {
+      setIsRewriting(false);
+      cancelRef.current = false;
+    }
+  }, [editor, isRewriting, llmProvider, llmApiKeys, llmModel, viewMode, markdownText, onChange, workItemMetadata]);
+
+  // Handle Cmd/Ctrl + K for rewriting description
+  useEffect(() => {
+    if (!editor || viewMode !== 'rich') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        handleRewriteDescription();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editor, viewMode, handleRewriteDescription]);
+
+  // Listen for rewrite events from the chat interface
+  useEffect(() => {
+    const handleChatRewrite = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { action: string };
+      if (!detail?.action || detail.action !== 'rewrite') return;
+
+      handleRewriteDescription();
+    };
+
+    window.addEventListener('syncboard:rewrite', handleChatRewrite);
+    return () => window.removeEventListener('syncboard:rewrite', handleChatRewrite);
+  }, [handleRewriteDescription]);
+
   const handleSlashCommandSelect = useCallback(
     (command: SlashCommand) => {
       if (!editor) return;
@@ -493,9 +595,41 @@ const handleMarkdownChange = (newMarkdown: string) => {
         <>
           {/* Toolbar - Clean */}
           <div className="flex items-center justify-between mb-4">
-            <EditorToolbar editor={editor} />
+            <div className="flex items-center gap-2">
+              <EditorToolbar editor={editor} />
+
+              {/* AI Rewrite Button */}
+              <div className="relative">
+                <button
+                  onClick={handleRewriteDescription}
+                  disabled={isRewriting || !llmApiKeys[llmProvider]}
+                  className="ai-assist-main"
+                  title="Rewrite description (⌘K)"
+                >
+                  {isRewriting ? (
+                    <>
+                      <X size={14} />
+                      Cancel
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      Rewrite
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+            
             {autoSave && <AutoSaveIndicator status={saveStatus} lastSavedAt={lastSavedAt} />}
           </div>
+
+          {/* Rewrite Error */}
+          {rewriteError && (
+            <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+              {rewriteError}
+            </div>
+          )}
 
           {/* Editor Content - No border */}
           <div className="relative">
@@ -518,10 +652,45 @@ const handleMarkdownChange = (newMarkdown: string) => {
         </>
       ) : (
         <>
-          {/* Auto-save indicator for markdown view */}
-          {autoSave && (
-            <div className="flex justify-end mb-4">
-              <AutoSaveIndicator status={saveStatus} lastSavedAt={lastSavedAt} />
+          {/* Toolbar for Markdown view */}
+          <div className="flex items-center justify-between mb-4">
+            {/* AI Rewrite Button (markdown mode) */}
+            <div className="relative">
+              <button
+                onClick={handleRewriteDescription}
+                disabled={isRewriting || !llmApiKeys[llmProvider]}
+                className="ai-assist-main"
+                title="Rewrite description (⌘K)"
+              >
+                {isRewriting ? (
+                  <>
+                    <X size={14} />
+                    Cancel
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    Rewrite
+                  </>
+                )}
+              </button>
+            </div>
+            
+            {autoSave && <AutoSaveIndicator status={saveStatus} lastSavedAt={lastSavedAt} />}
+          </div>
+
+          {/* Rewrite Error */}
+          {rewriteError && (
+            <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+              {rewriteError}
+            </div>
+          )}
+
+          {/* Shimmer indicator while generating in markdown mode */}
+          {isRewriting && viewMode === 'markdown' && (
+            <div className="mb-2 flex items-center gap-2 text-xs text-purple-600">
+              <span className="autofill-shimmer" />
+              Rewriting...
             </div>
           )}
           
@@ -529,6 +698,12 @@ const handleMarkdownChange = (newMarkdown: string) => {
           <textarea
             value={markdownText}
             onChange={(e) => handleMarkdownChange(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                handleRewriteDescription();
+              }
+            }}
             placeholder={placeholder}
             className="w-full min-h-[400px] p-4 font-mono text-sm text-gray-900 bg-transparent border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
             spellCheck={false}

@@ -58,8 +58,8 @@ export class WorkspaceAuthManager {
   /**
    * Unlock workspace
    */
-  static unlockWorkspace(user: User): AuthSession {
-    return this.createSession(user);
+  static unlockWorkspace(user: User, workspacePath: string): AuthSession {
+    return this.createSession(user, workspacePath);
   }
 
   /**
