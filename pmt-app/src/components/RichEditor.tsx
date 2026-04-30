@@ -175,7 +175,7 @@ export function RichEditor({
                 component.style.position = 'absolute';
 
                 const updateItems = () => {
-                  component.innerHTML = '';
+                  component.textContent = '';
                   if (props.items.length === 0) {
                     const noResults = document.createElement('div');
                     noResults.className = 'px-3 py-2 text-sm text-gray-500';
@@ -216,7 +216,7 @@ export function RichEditor({
 
               onUpdate(props: any) {
                 selectedIndex = 0;
-                component.innerHTML = '';
+                component.textContent = '';
                 
                 if (props.items.length === 0) {
                   const noResults = document.createElement('div');
