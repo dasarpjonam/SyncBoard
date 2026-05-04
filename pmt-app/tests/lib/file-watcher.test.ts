@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   FileWatcher,
   detectCloudService,
-} from "../../lib/file-watcher";
+} from "../../src/lib/file-watcher";
 import chokidar from "chokidar";
 
 describe("detectCloudService", () => {
