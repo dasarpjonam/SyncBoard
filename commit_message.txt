@@ -1,5 +1,0 @@
-🧪 [testing] add missing tests for slash-commands.ts
-
-🎯 What: Added unit tests for pure utility functions inside `pmt-app/src/lib/slash-commands.ts`.
-📊 Coverage: Tested `parseSlashCommand` (happy paths, various edge cases like no slash, empty command), `parseSlashArgs` (key-value pairs, positional query combinations, spacing nuances), and `getAvailableCommands` (using a mock `ToolRegistry`).
-✨ Result: `pmt-app/src/lib/slash-commands.ts` is now covered by an automated test suite that validates expected and boundary behaviors without regressions.

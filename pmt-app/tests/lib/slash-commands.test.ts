@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseSlashCommand, parseSlashArgs, getAvailableCommands } from './slash-commands';
-import { ToolRegistry } from './tool-registry';
+import { parseSlashCommand, parseSlashArgs, getAvailableCommands } from '../../src/lib/slash-commands';
+import { ToolRegistry } from '../../src/lib/tool-registry';
 
 describe('slash-commands', () => {
   describe('parseSlashCommand', () => {
