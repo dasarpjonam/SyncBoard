@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { WorkspaceAuthManager } from './auth';
-import { User } from '../types';
+import { WorkspaceAuthManager } from '../../src/lib/auth';
+import { User } from '../../src/types';
 
 describe('WorkspaceAuthManager', () => {
   beforeEach(() => {

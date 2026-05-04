@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseMarkdownItem, serializeMarkdownItem } from './markdown';
-import { WorkItem } from '../types';
+import { parseMarkdownItem, serializeMarkdownItem } from '../../src/lib/markdown';
+import { WorkItem } from '../../src/types';
 
 describe('Markdown Parsing and Serialization', () => {
   it('should correctly parse markdown with frontmatter', () => {

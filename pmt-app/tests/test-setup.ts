@@ -8,13 +8,13 @@ afterEach(() => {
 });
 
 // Mock window.electronAPI for tests
-(global as any).window = {
-  ...(global as any).window,
-  electronAPI: {
+if (typeof window !== 'undefined') {
+  (global as any).DOMParser = window.DOMParser;
+  (window as any).electronAPI = {
     ensureDir: async () => {},
     writeFile: async () => {},
     readFile: async () => new Uint8Array(),
     readDir: async () => [],
     isDirectory: async () => false,
-  },
-};
+  };
+}

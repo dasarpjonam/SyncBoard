@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { SlashCommandMenu, slashCommands, SlashCommand } from './SlashCommands';
+import { SlashCommandMenu, slashCommands, SlashCommand } from '../../src/components/SlashCommands';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 
