@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { AutoSaveIndicator, useAutoSave, SaveStatus } from './AutoSaveIndicator';
+import { AutoSaveIndicator, useAutoSave, SaveStatus } from '../../src/components/AutoSaveIndicator';
 
 describe('AutoSaveIndicator', () => {
   beforeEach(() => {

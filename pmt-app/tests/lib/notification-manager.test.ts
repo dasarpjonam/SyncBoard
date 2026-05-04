@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NotificationManager } from '../src/lib/notification-manager';
-import { Notification } from '../src/types';
+import { NotificationManager } from '../../src/lib/notification-manager';
+import { Notification } from '../../src/types';
 
 describe('NotificationManager', () => {
   let mockElectronAPI: { ensureDir: import("vitest").Mock, readFile: import("vitest").Mock, writeFile: import("vitest").Mock };
