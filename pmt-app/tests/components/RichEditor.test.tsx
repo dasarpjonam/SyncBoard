@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { RichEditor } from './RichEditor';
+import { RichEditor } from '../../src/components/RichEditor';
+
+vi.mock('../../src/store/WorkspaceContext', () => ({
+  useWorkspace: vi.fn().mockReturnValue({
+    llmProvider: 'mockProvider',
+    llmApiKeys: {},
+    llmModel: 'mockModel',
+  }),
+}));
 
 // Mock window.electronAPI
 const mockElectronAPI = {
@@ -29,7 +37,8 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByText(/Start typing.../)).toBeInTheDocument();
+      const editorNode = document.querySelector('.tiptap') as HTMLElement;
+      expect(editorNode.querySelector('[data-placeholder="Start typing..."]')).toBeInTheDocument();
     });
 
     it('should display initial content', () => {
@@ -41,7 +50,7 @@ describe('RichEditor Integration Tests', () => {
       );
 
       // TipTap should render the markdown
-      const editor = screen.getByRole('textbox', { hidden: true });
+      const editor = document.querySelector('.tiptap') as HTMLElement;
       expect(editor).toBeInTheDocument();
     });
 
@@ -53,7 +62,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      const editor = screen.getByRole('textbox', { hidden: true });
+      const editor = document.querySelector('.tiptap') as HTMLElement;
       fireEvent.input(editor, { target: { innerHTML: '<p>New content</p>' } });
 
       await waitFor(() => {
@@ -163,7 +172,7 @@ describe('RichEditor Integration Tests', () => {
       );
 
       // Editor should have mention extension configured
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
   });
 
@@ -177,7 +186,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should handle markdown lists', () => {
@@ -189,7 +198,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should handle markdown task lists', () => {
@@ -201,7 +210,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should handle markdown links', () => {
@@ -213,7 +222,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should handle markdown code blocks', () => {
@@ -225,7 +234,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should handle markdown blockquotes', () => {
@@ -237,7 +246,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
   });
 
@@ -251,7 +260,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
       // Image upload functionality is tested through drag-drop and paste events
     });
 
@@ -264,7 +273,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should support horizontal rules', () => {
@@ -276,7 +285,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should support text highlighting', () => {
@@ -287,7 +296,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
   });
 
@@ -300,7 +309,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      const editor = screen.getByRole('textbox', { hidden: true });
+      const editor = document.querySelector('.tiptap') as HTMLElement;
       
       // Simulate Cmd+B
       fireEvent.keyDown(editor, { key: 'b', metaKey: true });
@@ -317,7 +326,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      const editor = screen.getByRole('textbox', { hidden: true });
+      const editor = document.querySelector('.tiptap') as HTMLElement;
       fireEvent.keyDown(editor, { key: 'i', metaKey: true });
       
       expect(editor).toBeInTheDocument();
@@ -340,7 +349,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should not trigger onChange when updating from prop', () => {
@@ -374,7 +383,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should handle very long content', () => {
@@ -386,7 +395,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
 
     it('should handle special characters', () => {
@@ -398,7 +407,7 @@ describe('RichEditor Integration Tests', () => {
         />
       );
 
-      expect(screen.getByRole('textbox', { hidden: true })).toBeInTheDocument();
+      expect(document.querySelector('.tiptap') as HTMLElement).toBeInTheDocument();
     });
   });
 });
