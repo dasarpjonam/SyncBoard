@@ -116,7 +116,6 @@ export function BoardSection({ itemsTree, onEditItem, onNewItem }: Props) {
     >
       <div className="h-full flex flex-col bg-gray-100 p-3 md:p-6 overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 md:mb-6">
-          <h2 className="text-lg md:text-xl font-semibold text-gray-800">Kanban Board</h2>
           <button
             onClick={() => onNewItem()}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-sm text-sm md:text-base"

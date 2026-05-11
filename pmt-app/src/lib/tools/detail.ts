@@ -19,13 +19,15 @@ export const detailToolDefinition: ToolDefinition = {
 export const detailToolHandler: ToolHandler = async (args, context) => {
   const { id } = args;
 
+  const allItems = [...context.items, ...(context.personalNotes || [])];
+
   // Try exact match first, then partial match
-  let item = context.items.find(i => i.id === id);
+  let item = allItems.find(i => i.id === id);
   if (!item) {
     // Try partial match (e.g., "0001" matches "ITEM-0001")
     const digits = id.replace(/\D/g, '');
     if (digits) {
-      item = context.items.find(i => i.id.endsWith(digits) || i.id.includes(digits));
+      item = allItems.find(i => i.id.endsWith(digits) || i.id.includes(digits));
     }
   }
 
@@ -37,10 +39,10 @@ export const detailToolHandler: ToolHandler = async (args, context) => {
   }
 
   // Find children
-  const children = context.items.filter(i => i.parentId === item!.id);
+  const children = allItems.filter(i => i.parentId === item!.id);
   // Find parent
   const parent = item.parentId
-    ? context.items.find(i => i.id === item!.parentId)
+    ? allItems.find(i => i.id === item!.parentId)
     : null;
 
   const lines: string[] = [

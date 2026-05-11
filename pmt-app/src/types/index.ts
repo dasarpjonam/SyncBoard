@@ -20,6 +20,7 @@ export interface WorkItem {
   level?: number; // 0=Epic, 1=Feature, 2=Task/Bug (computed)
   children?: WorkItem[]; // Computed child items for tree structure
   comments?: Comment[]; // Comments on this work item
+  attachments?: string[]; // Paths or filenames of attached files
 }
 
 export interface WorkspaceConfig {
@@ -59,4 +60,27 @@ export interface Notification {
   recipient: string; // The user who should see this
   timestamp: string;
   read: boolean;
+}
+
+// ─── Workspace Registry ────────────────────────────────────────────
+
+export interface WorkspaceEntry {
+  path: string;
+  name: string;           // basename of path
+  lastOpenedAt: string;   // ISO timestamp
+  lastUser?: string;      // remembered currentUser for this workspace
+  stats?: { itemCount: number; inProgressCount: number };
+}
+
+// ─── Personal Todos ────────────────────────────────────────────────
+
+export interface PersonalTodo {
+  id: string;
+  text: string;
+  done: boolean;
+  targetDate?: string;               // YYYY-MM-DD
+  recurrence?: 'weekly' | 'monthly';
+  createdAt: string;
+  updatedAt: string;
+  doneAt?: string;
 }

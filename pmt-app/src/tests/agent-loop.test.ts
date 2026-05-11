@@ -32,7 +32,7 @@ describe('runAgentLoop', () => {
     } as unknown as ToolContext;
 
     mockLLMConfig = {
-      provider: 'openai',
+      provider: 'chatgpt',
       apiKey: 'test-key',
       model: 'gpt-4',
     };
@@ -77,7 +77,7 @@ describe('runAgentLoop', () => {
   it('handles tool execution successfully', async () => {
     vi.mocked(callLLM)
       .mockResolvedValueOnce({
-        content: null,
+        content: '',
         toolCalls: [{ name: 'test_tool', args: { arg1: 'value' } }],
       })
       .mockResolvedValueOnce({
@@ -108,7 +108,7 @@ describe('runAgentLoop', () => {
   it('handles tool execution failure and continues', async () => {
     vi.mocked(callLLM)
       .mockResolvedValueOnce({
-        content: null,
+        content: '',
         toolCalls: [{ name: 'test_tool', args: { arg1: 'value' } }],
       })
       .mockResolvedValueOnce({
@@ -134,7 +134,7 @@ describe('runAgentLoop', () => {
 
   it('stops when reaching max steps', async () => {
     vi.mocked(callLLM).mockImplementation(async () => ({
-      content: null,
+      content: '',
       toolCalls: [{ name: 'test_tool', args: {} }],
     }));
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -65,6 +65,14 @@ app.whenReady().then(() => {
     saveAuthorizedPaths();
     currentWorkspacePath = dirPath;
     return dirPath;
+  });
+
+  ipcMain.handle('dialog:openFile', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile'],
+    });
+    if (canceled) return null;
+    return filePaths[0];
   });
 
   ipcMain.handle('fs:setWorkspace', async (event, dirPath) => {
@@ -197,6 +205,116 @@ app.whenReady().then(() => {
       console.error('Error creating directory:', error);
       return false;
     }
+  });
+
+  ipcMain.handle('fs:copyFile', async (event, sourcePath, destPath) => {
+    try {
+      if (!currentWorkspacePath || !isPathInside(currentWorkspacePath, destPath)) {
+        throw new Error('Unauthorized destination for copy');
+      }
+      // Ensure destination dir exists
+      const destDir = path.dirname(destPath);
+      if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+      }
+      fs.copyFileSync(sourcePath, destPath);
+      return true;
+    } catch (error) {
+      console.error('Error copying file:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('fs:openPath', async (event, targetPath) => {
+    try {
+      if (!currentWorkspacePath || !isPathInside(currentWorkspacePath, targetPath)) {
+        throw new Error('Unauthorized file path');
+      }
+      if (fs.existsSync(targetPath)) {
+        await shell.openPath(targetPath);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error opening file path:', error);
+      return false;
+    }
+  });
+
+  // ─── App & Home Path Handlers ──────────────────────────────────
+  ipcMain.handle('app:getHomePath', () => app.getPath('home'));
+
+  ipcMain.handle('app:readUserData', (_, filename) => {
+    try {
+      const filePath = path.join(app.getPath('userData'), filename);
+      if (!fs.existsSync(filePath)) return null;
+      return fs.readFileSync(filePath, 'utf-8');
+    } catch (e) { console.error('readUserData error:', e); return null; }
+  });
+
+  ipcMain.handle('app:writeUserData', (_, filename, content) => {
+    try {
+      const filePath = path.join(app.getPath('userData'), filename);
+      fs.writeFileSync(filePath, content, 'utf-8');
+      return true;
+    } catch (e) { console.error('writeUserData error:', e); return false; }
+  });
+
+  // Home-relative file ops (for personal notes/todos stored in ~/.syncboard/)
+  const homeSyncboardBase = () => path.join(app.getPath('home'), '.syncboard');
+
+  ipcMain.handle('app:ensureHomePath', (_, relativePath) => {
+    try {
+      const fullPath = path.join(homeSyncboardBase(), relativePath);
+      if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
+      return true;
+    } catch (e) { console.error('ensureHomePath error:', e); return false; }
+  });
+
+  ipcMain.handle('app:readHomePath', (_, relativePath) => {
+    try {
+      const fullPath = path.join(homeSyncboardBase(), relativePath);
+      if (!fs.existsSync(fullPath)) return null;
+      return fs.readFileSync(fullPath, 'utf-8');
+    } catch (e) { console.error('readHomePath error:', e); return null; }
+  });
+
+  ipcMain.handle('app:writeHomePath', (_, relativePath, content) => {
+    try {
+      const fullPath = path.join(homeSyncboardBase(), relativePath);
+      const dir = path.dirname(fullPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(fullPath, content, 'utf-8');
+      return true;
+    } catch (e) { console.error('writeHomePath error:', e); return false; }
+  });
+
+  ipcMain.handle('app:deleteHomePath', (_, relativePath) => {
+    try {
+      const fullPath = path.join(homeSyncboardBase(), relativePath);
+      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      return true;
+    } catch (e) { console.error('deleteHomePath error:', e); return false; }
+  });
+
+  ipcMain.handle('app:readHomeDir', (_, relativePath) => {
+    try {
+      const fullPath = path.join(homeSyncboardBase(), relativePath);
+      if (!fs.existsSync(fullPath)) return [];
+      return fs.readdirSync(fullPath);
+    } catch (e) { console.error('readHomeDir error:', e); return []; }
+  });
+
+  // JSON file picker (for todo import)
+  ipcMain.handle('dialog:openJsonFile', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (canceled) return null;
+    try {
+      return fs.readFileSync(filePaths[0], 'utf-8');
+    } catch (e) { return null; }
   });
 
   // Git user info handlers

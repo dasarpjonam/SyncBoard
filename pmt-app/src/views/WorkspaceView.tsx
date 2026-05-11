@@ -7,7 +7,7 @@ import { ListSection } from '../components/ListSection';
 import { TableSection } from '../components/TableSection';
 import { serializeMarkdownItem } from '../lib/markdown';
 import { filterWithAncestors } from '../lib/hierarchy';
-import { LayoutDashboard, List, Table as TableIcon, Search, Filter, ChevronDown, X, User as UserIcon, FolderOpen } from 'lucide-react';
+import { LayoutDashboard, List, Table as TableIcon, Search, Filter, ChevronDown, X, FolderOpen } from 'lucide-react';
 
 type ViewMode = 'board' | 'list' | 'table';
 
@@ -28,7 +28,6 @@ export function WorkspaceView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showTypeFilter, setShowTypeFilter] = useState(false);
   const [showStatusFilter, setShowStatusFilter] = useState(false);
-  const [showUserSelector, setShowUserSelector] = useState(false);
 
   // Persist view mode
   useEffect(() => {
@@ -132,53 +131,6 @@ export function WorkspaceView() {
         <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 md:gap-0 mb-3 md:mb-4">
           <div className="flex items-center gap-4">
             <h1 className="text-xl md:text-2xl font-bold">Workspace</h1>
-            
-            {/* User Selector */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  console.log('[UserSelector] Clicked, current state:', showUserSelector);
-                  console.log('[UserSelector] Available users:', config.users);
-                  console.log('[UserSelector] Current user:', currentUser);
-                  setShowUserSelector(!showUserSelector);
-                }}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50 transition-colors"
-                title="Select your user"
-              >
-                <UserIcon size={14} />
-                <span className="text-gray-700">{currentUser || 'Select user'}</span>
-                <ChevronDown size={14} className={`transition-transform ${showUserSelector ? 'rotate-180' : ''}`} />
-              </button>
-              
-              {showUserSelector && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowUserSelector(false)} />
-                  <div className="absolute top-full mt-1 left-0 bg-white border rounded-lg shadow-lg z-50 min-w-[160px]">
-                    {config.users && config.users.length > 0 ? (
-                      config.users.map(user => (
-                        <button
-                          key={user}
-                          onClick={() => {
-                            console.log('[UserSelector] User selected:', user);
-                            setCurrentUser(user);
-                            setShowUserSelector(false);
-                          }}
-                          className={`w-full text-left px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm ${
-                            currentUser === user ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                          }`}
-                        >
-                          {user}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-4 py-2 text-sm text-gray-500">
-                        No users configured
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
           </div>
           
           <div className="flex gap-2">

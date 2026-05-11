@@ -13,12 +13,13 @@ export class LiveContextManager {
    * Generates and saves a project_context.md file in the root of the workspace.
    * This file acts as an AGENTS.md for the LLM to read.
    */
-  async updateLiveContext(items: WorkItem[], config: WorkspaceConfig) {
+  async updateLiveContext(items: WorkItem[], config: WorkspaceConfig, personalNotes: WorkItem[] = []) {
     if (!this.workspacePath) return;
 
     try {
       const activeItems = items.filter(i => i.status !== 'Done');
       const recentlyUpdated = [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5);
+      const recentNotes = [...personalNotes].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 3);
 
       const content = `
 # Project Context (Auto-generated)
@@ -30,9 +31,13 @@ This file contains the live state of the Syncboard workspace. It is intended to 
 - Active Items: ${activeItems.length}
 - Completed Items: ${items.length - activeItems.length}
 - Team Members: ${config.users.join(', ') || 'None'}
+- Personal Notes: ${personalNotes.length}
 
 ## Recent Activity
 ${recentlyUpdated.map(i => `- [${i.id}] ${i.title} (${i.status}) - Last updated: ${new Date(i.updatedAt).toLocaleString()}`).join('\n')}
+
+## Recent Personal Notes
+${recentNotes.map(n => `- [${n.id}] ${n.title} (${n.type}) - ${n.content.slice(0, 100).replace(/\n/g, ' ')}...`).join('\n') || 'No recent notes.'}
 
 ## Workflow Configuration
 - Types: ${config.types.join(', ')}

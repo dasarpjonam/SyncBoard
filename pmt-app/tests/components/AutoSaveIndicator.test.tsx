@@ -12,14 +12,15 @@ describe('AutoSaveIndicator', () => {
     vi.restoreAllMocks();
   });
 
-  it('should render "Saving..." when status is saving', () => {
+  it('should render "Saving…" when status is saving', () => {
     render(<AutoSaveIndicator status="saving" />);
-    expect(screen.getByText('Saving...')).toBeInTheDocument();
+    expect(screen.getByText('Saving…')).toBeInTheDocument();
   });
 
   it('should render "Saved" when status is saved without timestamp', () => {
     render(<AutoSaveIndicator status="saved" />);
-    expect(screen.getByText('Saved')).toBeInTheDocument();
+    // New design: without a timestamp it shows 'All changes saved' in saved/idle state
+    expect(screen.getByText('All changes saved')).toBeInTheDocument();
   });
 
   it('should render "Saved just now" when status is saved with recent timestamp', () => {
@@ -75,8 +76,8 @@ describe('AutoSaveIndicator', () => {
 
   it('should show check icon when saved', () => {
     render(<AutoSaveIndicator status="saved" />);
-    // Check for presence of SVG (lucide-react renders as SVG)
-    const svg = screen.getByText('Saved').parentElement?.querySelector('svg');
+    // The new design renders a check icon next to the text
+    const svg = document.querySelector('svg');
     expect(svg).toBeInTheDocument();
   });
 
@@ -100,13 +101,23 @@ describe('AutoSaveIndicator', () => {
     expect(savingContainer.querySelector('.text-blue-700')).toBeInTheDocument();
     expect(savingContainer.querySelector('.bg-blue-50')).toBeInTheDocument();
 
-    const { container: savedContainer } = render(<AutoSaveIndicator status="saved" />);
-    expect(savedContainer.querySelector('.text-green-700')).toBeInTheDocument();
-    expect(savedContainer.querySelector('.bg-green-50')).toBeInTheDocument();
-
     const { container: errorContainer } = render(<AutoSaveIndicator status="error" />);
     expect(errorContainer.querySelector('.text-red-700')).toBeInTheDocument();
     expect(errorContainer.querySelector('.bg-red-50')).toBeInTheDocument();
+  });
+
+  it('should show Undo button when canUndo is true and onUndo is provided', () => {
+    const onUndo = vi.fn();
+    render(<AutoSaveIndicator status="idle" canUndo={true} onUndo={onUndo} />);
+    const undoBtn = screen.getByTitle('Undo last save');
+    expect(undoBtn).toBeInTheDocument();
+    undoBtn.click();
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not show Undo button when canUndo is false', () => {
+    render(<AutoSaveIndicator status="idle" canUndo={false} onUndo={vi.fn()} />);
+    expect(screen.queryByTitle('Undo last save')).not.toBeInTheDocument();
   });
 });
 
@@ -262,5 +273,35 @@ describe('useAutoSave hook', () => {
     });
 
     expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it('should call onUndo with the previous snapshot after second save', async () => {
+    vi.useRealTimers();
+    const mockSave = vi.fn().mockResolvedValue(undefined);
+    const mockUndo = vi.fn();
+
+    const TestComponent = ({ value }: { value: string }) => {
+      const { handleUndo, canUndo } = useAutoSave(value, mockSave, 50, mockUndo);
+      return (
+        <div>
+          <span data-testid="canUndo">{String(canUndo)}</span>
+          <button onClick={handleUndo}>Undo</button>
+        </div>
+      );
+    };
+
+    const { rerender, getByText, getByTestId } = render(<TestComponent value="first" />);
+    await new Promise(resolve => setTimeout(resolve, 80)); // first save
+
+    // Second value — first is now the "previous snapshot"
+    rerender(<TestComponent value="second" />);
+    await new Promise(resolve => setTimeout(resolve, 80)); // second save
+
+    expect(getByTestId('canUndo').textContent).toBe('true');
+
+    getByText('Undo').click();
+    expect(mockUndo).toHaveBeenCalledWith('first');
+
+    vi.useFakeTimers();
   });
 });

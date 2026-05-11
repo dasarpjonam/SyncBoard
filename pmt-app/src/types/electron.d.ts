@@ -11,6 +11,9 @@ declare global {
       deleteFile: (filePath: string) => Promise<boolean>;
       ensureDir: (dirPath: string) => Promise<boolean>;
       isDirectory: (filePath: string) => Promise<boolean>;
+      openFile: () => Promise<string | null>;
+      copyFile: (src: string, dest: string) => Promise<boolean>;
+      openPath: (path: string) => Promise<boolean>;
       
       // Git integration
       gitGetUserInfo: () => Promise<{ name: string; email: string; github?: string } | null>;

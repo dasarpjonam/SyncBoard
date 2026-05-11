@@ -23,6 +23,7 @@ export function parseMarkdownItem(fileName: string, fileContent: string): WorkIt
       fileName,
       parentId: frontmatter.parentId || undefined,
       comments: frontmatter.comments || [],
+      attachments: frontmatter.attachments || [],
     };
   } catch (error) {
     console.error(`Error parsing YAML for ${fileName}:`, error);
@@ -53,6 +54,7 @@ export function serializeWorkItemToText(item: Partial<WorkItem>): string {
   if (item.parentId) yamlData.parentId = item.parentId;
   if (item.createdAt) yamlData.createdAt = item.createdAt;
   if (item.updatedAt) yamlData.updatedAt = item.updatedAt;
+  if (item.attachments && item.attachments.length > 0) yamlData.attachments = item.attachments;
 
   const yamlString = yaml.dump(yamlData, { lineWidth: -1 });
   
@@ -121,6 +123,7 @@ export function parseTextToWorkItem(text: string, fileName?: string): Partial<Wo
       updatedAt: frontmatter.updatedAt,
       parentId: frontmatter.parentId,
       comments: comments,
+      attachments: frontmatter.attachments || [],
     };
 
     if (fileName) {

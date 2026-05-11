@@ -26,7 +26,8 @@ export const searchToolHandler: ToolHandler = async (args, context) => {
   const { query, status, type, assignee, limit = 10 } = args;
 
   // Use the existing searchItems function for keyword matching
-  let results = searchItems(context.items, query);
+  const allItems = [...context.items, ...(context.personalNotes || [])];
+  let results = searchItems(allItems, query);
 
   // Apply optional filters
   if (status) {

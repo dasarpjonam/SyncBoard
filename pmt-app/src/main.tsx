@@ -6,6 +6,7 @@ import { theme } from './theme'
 import AppContent from './App'
 import './index.css'
 import { WorkspaceProvider } from './store/WorkspaceContext'
+import { ToastProvider } from './components/Toast'
 import './types/electron-mock'
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
@@ -13,7 +14,9 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <WorkspaceProvider>
-        <AppContent />
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
       </WorkspaceProvider>
     </ThemeProvider>
   </React.StrictMode>,
