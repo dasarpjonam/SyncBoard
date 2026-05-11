@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { WorkItem, WorkspaceConfig, User, AuthSession } from '../types';
+import { WorkItem, WorkspaceConfig, User, AuthSession, WorkspaceEntry, PersonalTodo } from '../types';
 import { buildTree, getDescendants } from '../lib/hierarchy';
 import { LLMProvider } from '../lib/llm-providers';
 import { ITEMS_FOLDER } from '../lib/constants';
@@ -9,6 +9,16 @@ import { NotificationManager } from '../lib/notification-manager';
 import { LiveContextManager } from '../lib/live-context';
 import { evaluateTriggers } from '../lib/notification-triggers';
 import { WorkspaceAuthManager } from '../lib/auth';
+import { 
+  loadRegistry, 
+  saveRegistry, 
+  addEntry, 
+  removeEntry, 
+  updateEntryUser, 
+  updateEntryStats, 
+  getBasename 
+} from '../lib/workspace-registry';
+import { loadTodos, saveTodos } from '../lib/personal-store';
 
 interface WorkspaceContextProps {
   notifications: Notification[];
@@ -18,6 +28,7 @@ interface WorkspaceContextProps {
   workspacePath: string | null;
   items: WorkItem[];
   itemsTree: WorkItem[];
+  personalNotes: WorkItem[];
   config: WorkspaceConfig;
   apiKey: string | null; // Legacy - kept for backward compatibility
   llmProvider: LLMProvider;
@@ -26,11 +37,30 @@ interface WorkspaceContextProps {
   currentUser: string | null;
   authSession: AuthSession | null;
   isLocked: boolean;
+  // Workspace Registry
+  recentWorkspaces: WorkspaceEntry[];
+  addToRecentWorkspaces: (path: string, name: string) => Promise<void>;
+  removeFromRecentWorkspaces: (path: string) => Promise<void>;
+  // Personal Todos
+  todos: PersonalTodo[];
+  setTodos: (todos: PersonalTodo[]) => void;
+  addTodo: (todo: PersonalTodo) => Promise<void>;
+  updateTodo: (todo: PersonalTodo) => Promise<void>;
+  deleteTodo: (id: string) => Promise<void>;
+  toggleTodoDone: (id: string) => Promise<void>;
+  // Dirty tracking for unsaved changes
+  isDirty: boolean;
+  setIsDirty: (dirty: boolean) => void;
+  // Existing methods
   setWorkspacePath: (path: string | null) => void;
   setItems: (items: WorkItem[]) => void;
   addItem: (item: WorkItem, parentId?: string) => void;
   updateItem: (item: WorkItem) => void;
   deleteItem: (id: string, deletecascade?: boolean) => Promise<boolean>;
+  setPersonalNotes: (notes: WorkItem[]) => void;
+  addPersonalNote: (note: WorkItem) => void;
+  updatePersonalNote: (note: WorkItem) => void;
+  deletePersonalNote: (id: string) => Promise<boolean>;
   changeParent: (itemId: string, newParentId: string | null) => Promise<boolean>;
   setConfig: (config: WorkspaceConfig) => void;
   setApiKey: (key: string | null) => void; // Legacy
@@ -46,7 +76,7 @@ interface WorkspaceContextProps {
 }
 
 const DEFAULT_CONFIG: WorkspaceConfig = {
-  types: ['Task', 'Bug', 'Feature', 'Epic'],
+  types: ['Task', 'Bug', 'Feature', 'Epic', 'Meeting Note'],
   statuses: ['To Do', 'In Progress', 'In Review', 'Done'],
   users: [],
 };
@@ -57,6 +87,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [workspacePath, setWorkspacePath] = useState<string | null>(localStorage.getItem('workspacePath'));
   const [items, setItems] = useState<WorkItem[]>([]);
   const [itemsTree, setItemsTree] = useState<WorkItem[]>([]);
+  const [personalNotes, setPersonalNotes] = useState<WorkItem[]>([]);
   const [config, setConfig] = useState<WorkspaceConfig>(DEFAULT_CONFIG);
   const [apiKey, setApiKeyState] = useState<string | null>(localStorage.getItem('geminiApiKey'));
   const [llmProvider, setLLMProviderState] = useState<LLMProvider>(() => {
@@ -74,6 +105,15 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Workspace Registry
+  const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceEntry[]>([]);
+
+  // Personal Todos
+  const [todos, setTodos] = useState<PersonalTodo[]>([]);
+
+  // Dirty tracking
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+
   // Auth state
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
     return WorkspaceAuthManager.getSession();
@@ -88,6 +128,19 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const getNotificationManager = () => workspacePath ? new NotificationManager(workspacePath, window.electronAPI) : null;
   const getLiveContextManager = () => workspacePath ? new LiveContextManager(workspacePath, window.electronAPI) : null;
 
+  // Load workspace registry on mount
+  useEffect(() => {
+    loadRegistry().then(setRecentWorkspaces);
+  }, []);
+
+  // Load todos when currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      loadTodos(currentUser).then(setTodos);
+    } else {
+      setTodos([]);
+    }
+  }, [currentUser]);
 
   // Update tree whenever items change
   useEffect(() => {
@@ -201,13 +254,107 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     if (nm) await nm.saveNotifications(currentUser, updated);
   };
 
-  const setCurrentUser = (user: string | null) => {
+  const setCurrentUser = async (user: string | null) => {
     setCurrentUserState(user);
     if (user) {
       localStorage.setItem('currentUser', user);
+      // Update registry with lastUser for current workspace
+      if (workspacePath) {
+        const updated = updateEntryUser(recentWorkspaces, workspacePath, user);
+        setRecentWorkspaces(updated);
+        await saveRegistry(updated);
+      }
+      // Load todos for this user
+      loadTodos(user).then(setTodos);
     } else {
       localStorage.removeItem('currentUser');
+      setTodos([]);
     }
+  };
+
+  // ─── Workspace Registry Functions ──────────────────────────────
+
+  const addToRecentWorkspaces = async (path: string, name: string) => {
+    const updated = addEntry(recentWorkspaces, path, name);
+    setRecentWorkspaces(updated);
+    await saveRegistry(updated);
+  };
+
+  const removeFromRecentWorkspaces = async (path: string) => {
+    const updated = removeEntry(recentWorkspaces, path);
+    setRecentWorkspaces(updated);
+    await saveRegistry(updated);
+  };
+
+  const updateRegistryStats = async (path: string, itemCount: number, inProgressCount: number) => {
+    const updated = updateEntryStats(recentWorkspaces, path, { itemCount, inProgressCount });
+    setRecentWorkspaces(updated);
+    await saveRegistry(updated);
+  };
+
+  // ─── Personal Todos Functions ─────────────────────────────────
+
+  const addTodo = async (todo: PersonalTodo) => {
+    if (!currentUser) return;
+    const newTodos = [...todos, todo];
+    setTodos(newTodos);
+    await saveTodos(currentUser, newTodos);
+  };
+
+  const updateTodo = async (todo: PersonalTodo) => {
+    if (!currentUser) return;
+    const newTodos = todos.map(t => t.id === todo.id ? todo : t);
+    setTodos(newTodos);
+    await saveTodos(currentUser, newTodos);
+  };
+
+  const deleteTodo = async (id: string) => {
+    if (!currentUser) return;
+    const newTodos = todos.filter(t => t.id !== id);
+    setTodos(newTodos);
+    await saveTodos(currentUser, newTodos);
+  };
+
+  const toggleTodoDone = async (id: string) => {
+    if (!currentUser) return;
+    const todo = todos.find(t => t.id === id);
+    if (!todo) return;
+
+    const now = new Date().toISOString();
+    let newTodos = [...todos];
+
+    if (!todo.done) {
+      // Mark as done
+      const updatedTodo = { ...todo, done: true, doneAt: now, updatedAt: now };
+      newTodos = newTodos.map(t => t.id === id ? updatedTodo : t);
+
+      // If recurring, create a clone with next date
+      if (todo.recurrence && todo.targetDate) {
+        const nextDate = new Date(todo.targetDate);
+        if (todo.recurrence === 'weekly') {
+          nextDate.setDate(nextDate.getDate() + 7);
+        } else if (todo.recurrence === 'monthly') {
+          nextDate.setMonth(nextDate.getMonth() + 1);
+        }
+        const clonedTodo: PersonalTodo = {
+          ...todo,
+          id: `TODO-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          done: false,
+          targetDate: nextDate.toISOString().split('T')[0],
+          createdAt: now,
+          updatedAt: now,
+          doneAt: undefined,
+        };
+        newTodos.push(clonedTodo);
+      }
+    } else {
+      // Mark as undone
+      const updatedTodo = { ...todo, done: false, doneAt: undefined, updatedAt: now };
+      newTodos = newTodos.map(t => t.id === id ? updatedTodo : t);
+    }
+
+    setTodos(newTodos);
+    await saveTodos(currentUser, newTodos);
   };
 
   const setWorkspacePathPersist = (path: string | null) => {
@@ -326,6 +473,52 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const addPersonalNote = (note: WorkItem) => {
+    setPersonalNotes(prev => [...prev, note]);
+    
+    // Update live context asynchronously
+    setTimeout(async () => {
+      const lcm = getLiveContextManager();
+      if (lcm) await lcm.updateLiveContext(items, config, [...personalNotes, note]);
+    }, 0);
+  };
+
+  const updatePersonalNote = (note: WorkItem) => {
+    setPersonalNotes(prev => {
+      const newNotes = prev.map(n => n.id === note.id ? note : n);
+      setTimeout(async () => {
+        const lcm = getLiveContextManager();
+        if (lcm) await lcm.updateLiveContext(items, config, newNotes);
+      }, 0);
+      return newNotes;
+    });
+  };
+
+  const deletePersonalNote = async (id: string): Promise<boolean> => {
+    if (!workspacePath || !currentUser) return false;
+    const note = personalNotes.find(n => n.id === id);
+    if (!note) return false;
+
+    try {
+      const filePath = `${workspacePath}/.syncboard/users/${currentUser}/notes/${note.fileName}`;
+      const success = await window.electronAPI.deleteFile(filePath);
+      if (success) {
+        setPersonalNotes(prev => {
+          const newNotes = prev.filter(n => n.id !== id);
+          setTimeout(async () => {
+            const lcm = getLiveContextManager();
+            if (lcm) await lcm.updateLiveContext(items, config, newNotes);
+          }, 0);
+          return newNotes;
+        });
+      }
+      return success;
+    } catch (error) {
+      console.error('Failed to delete personal note', error);
+      return false;
+    }
+  };
+
   const changeParent = async (itemId: string, newParentId: string | null): Promise<boolean> => {
     if (!workspacePath) return false;
     const item = items.find(i => i.id === itemId);
@@ -370,6 +563,10 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
       await window.electronAPI.setWorkspace(path);
       setWorkspacePathPersist(path);
 
+      // Add to registry
+      const name = getBasename(path);
+      await addToRecentWorkspaces(path, name);
+
       // Load config
       const configContent = await window.electronAPI.readFile(`${path}/config.yaml`);
       if (configContent) {
@@ -384,6 +581,16 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         // Create default config
         await window.electronAPI.writeFile(`${path}/config.yaml`, yaml.dump(DEFAULT_CONFIG));
         setConfig(DEFAULT_CONFIG);
+      }
+
+      // Restore lastUser from registry if available
+      const entry = recentWorkspaces.find(e => e.path === path);
+      if (entry?.lastUser && !currentUser) {
+        // Check if the user exists in config
+        const configUsers = config.users || [];
+        if (configUsers.includes(entry.lastUser)) {
+          setCurrentUser(entry.lastUser);
+        }
       }
 
       // We won't load items here directly to avoid circular deps with parsing, we will let the app root do it
@@ -435,10 +642,14 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   return (
     <WorkspaceContext.Provider value={{
       notifications, unreadCount, markNotificationsAsRead, markNotificationAsRead,
-      workspacePath, items, itemsTree, config, apiKey, currentUser,
+      workspacePath, items, itemsTree, personalNotes, config, apiKey, currentUser,
       llmProvider, llmApiKeys, llmModel,
       authSession, isLocked,
+      recentWorkspaces, addToRecentWorkspaces, removeFromRecentWorkspaces,
+      todos, setTodos, addTodo, updateTodo, deleteTodo, toggleTodoDone,
+      isDirty, setIsDirty,
       setWorkspacePath: setWorkspacePathPersist, setItems, addItem, updateItem, deleteItem, changeParent,
+      setPersonalNotes, addPersonalNote, updatePersonalNote, deletePersonalNote,
       setConfig, setApiKey, setCurrentUser, saveConfig, loadWorkspace,
       setLLMProvider, setLLMApiKey, setLLMModel,
       unlockWorkspace, lockWorkspace, checkWorkspaceAuth

@@ -1,4 +1,4 @@
-import { WorkItem, WorkspaceConfig } from './index';
+import { WorkItem, WorkspaceConfig, PersonalTodo } from './index';
 import { WorkspaceSummary } from '../lib/context-builder';
 
 // Re-export for convenience
@@ -47,11 +47,35 @@ export interface ToolResult {
 
 export interface ToolContext {
   items: WorkItem[];
+  personalNotes: WorkItem[];
   config: WorkspaceConfig;
   workspacePath: string;
+  currentUser?: string;
+  currentWorkItem?: WorkItem; // Added: currently open work item for context-aware tools
+  // Settings
+  llmProvider?: string;
+  llmModel?: string | null;
+  llmApiKeys?: Record<string, string>;
+  availableUsers?: string[];
+  setCurrentUser?: (user: string) => Promise<void>;
+  setLLMProvider?: (provider: string) => void;
+  setLLMModel?: (model: string) => void;
+  setApiKey?: (provider: string, apiKey: string) => void;
+  // Work items
   addItem: (item: WorkItem) => void;
   updateItem: (item: WorkItem) => void;
   deleteItem: (id: string) => Promise<boolean>;
+  // Personal notes
+  addPersonalNote: (item: WorkItem) => void;
+  updatePersonalNote: (item: WorkItem) => void;
+  deletePersonalNote: (id: string) => Promise<boolean>;
+  // Personal todos
+  todos: PersonalTodo[];
+  addTodo: (todo: PersonalTodo) => Promise<void>;
+  updateTodo: (todo: PersonalTodo) => Promise<void>;
+  deleteTodo: (id: string) => Promise<void>;
+  toggleTodoDone: (id: string) => Promise<void>;
+  // Electron API
   electronAPI: typeof window.electronAPI;
 }
 

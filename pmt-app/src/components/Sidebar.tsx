@@ -1,14 +1,30 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Typography, Box, Tooltip, useMediaQuery, useTheme } from '@mui/material';
-import { LayoutDashboard, Settings, FolderOpen, FolderPlus, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
+import { LayoutDashboard, Settings, ChevronLeft, ChevronRight, Lock, User, FolderPlus } from 'lucide-react';
 import { useWorkspace } from '../store/WorkspaceContext';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { UserSelector } from './UserSelector';
+import { getBasename } from '../lib/workspace-registry';
 
 const DRAWER_WIDTH = 240;
 const DRAWER_WIDTH_COLLAPSED = 72;
 
 export function Sidebar() {
-  const { workspacePath, loadWorkspace, lockWorkspace, authSession, config } = useWorkspace();
+  const { 
+    workspacePath, 
+    loadWorkspace, 
+    lockWorkspace, 
+    authSession, 
+    config,
+    currentUser,
+    setCurrentUser,
+    recentWorkspaces,
+    addToRecentWorkspaces,
+    removeFromRecentWorkspaces,
+    isDirty,
+    setIsDirty,
+  } = useWorkspace();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -17,17 +33,35 @@ export function Sidebar() {
     return saved === 'true';
   });
 
-  const handleOpenWorkspace = async () => {
+  const handleSwitchWorkspace = async (path: string) => {
+    // Check if unsaved changes
+    if (isDirty) {
+      const confirmed = confirm('You have unsaved changes. Switch workspace anyway?');
+      if (!confirmed) return;
+      setIsDirty(false);
+    }
+    await loadWorkspace(path);
+  };
+
+  const handleOpenNew = async () => {
     const path = await window.electronAPI.openDirectory();
     if (path) {
-      await loadWorkspace(path);
+      const name = getBasename(path);
+      await addToRecentWorkspaces(path, name);
+      await handleSwitchWorkspace(path);
     }
   };
 
-  const handleSetupNewWorkspace = async () => {
+  const handleRemove = async (path: string) => {
+    await removeFromRecentWorkspaces(path);
+  };
+
+  const handleCreateNewWorkspace = async () => {
     const path = await window.electronAPI.openDirectory();
     if (path) {
-      await loadWorkspace(path);
+      const name = getBasename(path);
+      await addToRecentWorkspaces(path, name);
+      await handleSwitchWorkspace(path);
     }
   };
 
@@ -62,11 +96,65 @@ export function Sidebar() {
 
       <Divider sx={{ borderColor: '#374151' }} />
 
+      {/* User Selector - show available users */}
+      {config.users && config.users.length > 0 && (
+        <Box sx={{ p: 1 }}>
+          <UserSelector
+            currentUser={currentUser}
+            availableUsers={config.users}
+            onUserChange={setCurrentUser}
+            collapsed={collapsed}
+          />
+        </Box>
+      )}
+
+      <Divider sx={{ borderColor: '#374151' }} />
+
+      {/* Workspace Switcher */}
+      <Box sx={{ p: 1 }}>
+        <WorkspaceSwitcher
+          recentWorkspaces={recentWorkspaces}
+          currentPath={workspacePath}
+          collapsed={collapsed}
+          onSwitch={handleSwitchWorkspace}
+          onOpenNew={handleOpenNew}
+          onRemove={handleRemove}
+        />
+      </Box>
+
+      <Divider sx={{ borderColor: '#374151', my: 1 }} />
+
+      {/* New Workspace button */}
+      <Box sx={{ p: 1 }}>
+        <Tooltip title={collapsed ? 'New Workspace' : ''} placement="right">
+          <ListItemButton
+            onClick={handleCreateNewWorkspace}
+            sx={{
+              borderRadius: 1,
+              '&:hover': { backgroundColor: '#374151' },
+              justifyContent: collapsed ? 'center' : 'flex-start',
+            }}
+          >
+            <ListItemIcon sx={{ color: '#ffffff', minWidth: collapsed ? 0 : 40 }}>
+              <FolderPlus size={20} />
+            </ListItemIcon>
+            {!collapsed && (
+              <ListItemText
+                primary="New Workspace"
+                primaryTypographyProps={{ fontSize: '0.875rem' }}
+              />
+            )}
+          </ListItemButton>
+        </Tooltip>
+      </Box>
+
+      <Divider sx={{ borderColor: '#374151' }} />
+
       {/* Navigation */}
       <List sx={{ flexGrow: 1, pt: 2 }}>
         <NavLink to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
           {({ isActive }) => (
-            <Tooltip title={collapsed ? 'Workspace' : ''} placement="right">
+            <Tooltip title={collapsed ? 'Team space' : ''} placement="right">
               <ListItemButton
                 selected={isActive}
                 sx={{
@@ -80,7 +168,29 @@ export function Sidebar() {
                 <ListItemIcon sx={{ color: '#ffffff', minWidth: collapsed ? 0 : 40 }}>
                   <LayoutDashboard size={20} />
                 </ListItemIcon>
-                {!collapsed && <ListItemText primary="Workspace" />}
+                {!collapsed && <ListItemText primary="Team space" />}
+              </ListItemButton>
+            </Tooltip>
+          )}
+        </NavLink>
+
+        <NavLink to="/personal" style={{ textDecoration: 'none', color: 'inherit' }}>
+          {({ isActive }) => (
+            <Tooltip title={collapsed ? 'My Space' : ''} placement="right">
+              <ListItemButton
+                selected={isActive}
+                sx={{
+                  mx: 1,
+                  borderRadius: 1,
+                  '&.Mui-selected': { backgroundColor: '#374151' },
+                  '&:hover': { backgroundColor: '#374151' },
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                }}
+              >
+                <ListItemIcon sx={{ color: '#ffffff', minWidth: collapsed ? 0 : 40 }}>
+                  <User size={20} />
+                </ListItemIcon>
+                {!collapsed && <ListItemText primary="My Space" />}
               </ListItemButton>
             </Tooltip>
           )}
@@ -111,52 +221,9 @@ export function Sidebar() {
 
       <Divider sx={{ borderColor: '#374151' }} />
 
-      {/* Workspace Actions */}
-      <Box sx={{ p: 1 }}>
-        <Tooltip title={collapsed ? 'Open Workspace' : ''} placement="right">
-          <ListItemButton
-            onClick={handleOpenWorkspace}
-            sx={{
-              borderRadius: 1,
-              '&:hover': { backgroundColor: '#374151' },
-              justifyContent: collapsed ? 'center' : 'flex-start',
-            }}
-          >
-            <ListItemIcon sx={{ color: '#ffffff', minWidth: collapsed ? 0 : 40 }}>
-              <FolderOpen size={20} />
-            </ListItemIcon>
-            {!collapsed && (
-              <ListItemText
-                primary={workspacePath ? 'Change Workspace' : 'Open Workspace'}
-                primaryTypographyProps={{ fontSize: '0.875rem' }}
-              />
-            )}
-          </ListItemButton>
-        </Tooltip>
-
-        <Tooltip title={collapsed ? 'New Workspace' : ''} placement="right">
-          <ListItemButton
-            onClick={handleSetupNewWorkspace}
-            sx={{
-              borderRadius: 1,
-              '&:hover': { backgroundColor: '#374151' },
-              justifyContent: collapsed ? 'center' : 'flex-start',
-            }}
-          >
-            <ListItemIcon sx={{ color: '#ffffff', minWidth: collapsed ? 0 : 40 }}>
-              <FolderPlus size={20} />
-            </ListItemIcon>
-            {!collapsed && (
-              <ListItemText
-                primary="Setup New Workspace"
-                primaryTypographyProps={{ fontSize: '0.875rem' }}
-              />
-            )}
-          </ListItemButton>
-        </Tooltip>
-
-        {/* Lock Workspace button - only show if workspace has auth enabled and user is authenticated */}
-        {config.auth?.enabled && authSession?.isAuthenticated && (
+      {/* Lock Workspace button - only show if workspace has auth enabled and user is authenticated */}
+      {config.auth?.enabled && authSession?.isAuthenticated && (
+        <Box sx={{ p: 1 }}>
           <Tooltip title={collapsed ? 'Lock Workspace' : ''} placement="right">
             <ListItemButton
               onClick={lockWorkspace}
@@ -177,26 +244,8 @@ export function Sidebar() {
               )}
             </ListItemButton>
           </Tooltip>
-        )}
-
-        {workspacePath && !collapsed && (
-          <Typography
-            variant="caption"
-            sx={{
-              display: 'block',
-              mt: 1,
-              px: 2,
-              color: '#9ca3af',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-            title={workspacePath}
-          >
-            {workspacePath.split('/').pop() || workspacePath.split('\\').pop()}
-          </Typography>
-        )}
-      </Box>
+        </Box>
+      )}
 
       <Divider sx={{ borderColor: '#374151' }} />
 

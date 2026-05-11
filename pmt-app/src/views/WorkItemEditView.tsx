@@ -8,21 +8,45 @@ import { ITEMS_FOLDER } from '../lib/constants';
 import { serializeMarkdownItem, serializeWorkItemToText, parseTextToWorkItem } from '../lib/markdown';
 import { RichEditor } from '../components/RichEditor';
 import { AutoSaveIndicator, useAutoSave } from '../components/AutoSaveIndicator';
-import { ArrowLeft, Save, Trash2, MessageSquare, User, Calendar, Tag, Folder, FileText, Layout } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, MessageSquare, User, Calendar, Tag, Folder, FileText, Layout, Paperclip, Sparkles, X, File, Image, Table, Archive } from 'lucide-react';
+import { callLLM, LLMMessage } from '../lib/llm-providers';
+import { useToast } from '../components/Toast';
+
+// File type icon helper
+function getFileIcon(filename: string) {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  switch (ext) {
+    case 'pdf': return <FileText size={16} className="text-red-400" />;
+    case 'doc': case 'docx': return <FileText size={16} className="text-blue-400" />;
+    case 'xls': case 'xlsx': case 'csv': return <Table size={16} className="text-green-400" />;
+    case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': case 'webp': return <Image size={16} className="text-purple-400" />;
+    case 'zip': case 'tar': case 'gz': case 'rar': return <Archive size={16} className="text-yellow-500" />;
+    default: return <File size={16} className="text-gray-400" />;
+  }
+}
+
+interface ExtractedTask {
+  title: string;
+  assignee?: string;
+  selected: boolean;
+}
 
 export function WorkItemEditView() {
   const navigate = useNavigate();
   const { itemId } = useParams<{ itemId: string }>();
   const [searchParams] = useSearchParams();
-  const { config, items, workspacePath, updateItem, deleteItem, addItem, currentUser } = useWorkspace();
+  const { config, items, workspacePath, updateItem, deleteItem, addItem, currentUser, llmProvider, llmApiKeys, llmModel } = useWorkspace();
   
   const [formData, setFormData] = useState<Partial<WorkItem>>({});
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [viewMode, setViewMode] = useState<'ui' | 'text'>('ui');
   const [textContent, setTextContent] = useState('');
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractedTasks, setExtractedTasks] = useState<ExtractedTask[] | null>(null);
+  const { showToast } = useToast();
 
   const isNewItem = itemId === 'new';
   const existingItem = !isNewItem ? items.find(i => i.id === itemId) : null;
@@ -43,6 +67,7 @@ export function WorkItemEditView() {
       fileName: existingItem?.fileName || `${existingItem?.id || generateWorkItemId(items)}.md`,
       parentId: data.parentId,
       comments: data.comments || [],
+      attachments: data.attachments || [],
     };
 
     const markdown = serializeMarkdownItem(workItem);
@@ -50,12 +75,32 @@ export function WorkItemEditView() {
     updateItem(workItem);
   }, [workspacePath, isNewItem, existingItem, updateItem]);
 
+  // Undo callback — restores prior formData state and immediately saves it
+  const handleUndoAutoSave = useCallback((previous: Partial<WorkItem>) => {
+    setFormData(previous);
+    showToast('Change undone', 'success');
+  }, [showToast]);
+
   // Auto-save hook - only for existing items
-  const { status: autoSaveStatus, lastSavedAt, error: autoSaveError } = useAutoSave(
+  const { status: autoSaveStatus, lastSavedAt, error: autoSaveError, canUndo, handleUndo } = useAutoSave(
     !isNewItem ? formData : null,
     handleAutoSave,
-    2000 // 2 second delay
+    2000, // 2 second delay
+    handleUndoAutoSave,
   );
+
+  // ⌘S / Ctrl+S: immediate flush save for existing items
+  useEffect(() => {
+    if (isNewItem) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (formData.title) handleAutoSave(formData);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isNewItem, formData, handleAutoSave]);
 
   useEffect(() => {
     if (existingItem) {
@@ -64,26 +109,33 @@ export function WorkItemEditView() {
     } else if (isNewItem) {
       // New item - set defaults
       const parentId = searchParams.get('parentId') || undefined;
-      let defaultType = config.types[0] || 'Task';
+      const typeOverride = searchParams.get('type') || undefined;
+      let defaultType = typeOverride || config.types[0] || 'Task';
       
       // If there's a parent, determine allowed types
       if (parentId) {
         const parent = items.find(i => i.id === parentId);
         if (parent) {
           const allowedTypes = getAllowedChildTypes(parent);
-          if (allowedTypes.length > 0) {
+          if (allowedTypes.length > 0 && !typeOverride) {
             defaultType = allowedTypes[0];
           }
         }
       }
+
+      // Meeting note template
+      const defaultContent = defaultType === 'Meeting Note'
+        ? '## Attendees\n- \n\n## Agenda\n1. \n\n## Discussion\n\n\n## Action Items\n- [ ] \n'
+        : '';
       
       const newData = {
         title: '',
         type: defaultType,
         status: config.statuses[0] || 'To Do',
-        content: '',
+        content: defaultContent,
         parentId: parentId,
         comments: [],
+        attachments: [],
       };
       setFormData(newData);
       setTextContent(serializeWorkItemToText(newData));
@@ -98,41 +150,38 @@ export function WorkItemEditView() {
     }
   }, [deleteConfirm]);
 
-  const handleSave = async () => {
+  // Create handler — for new items only. Creates the file then navigates to its edit view.
+  const handleCreate = async () => {
     if (!formData.title || !workspacePath) return;
-
-    setIsSaving(true);
+    setIsCreating(true);
     try {
+      const newId = generateWorkItemId(items);
       const workItem: WorkItem = {
-        id: existingItem?.id || generateWorkItemId(items),
+        id: newId,
         title: formData.title!,
         type: formData.type!,
         status: formData.status!,
         assignee: formData.assignee,
         content: formData.content || '',
-        createdAt: existingItem?.createdAt || new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        fileName: existingItem?.fileName || `${existingItem?.id || generateWorkItemId(items)}.md`,
+        fileName: `${newId}.md`,
         parentId: formData.parentId,
-        comments: formData.comments || [],
+        comments: [],
+        attachments: [],
       };
-
       const markdown = serializeMarkdownItem(workItem);
       await window.electronAPI.ensureDir(`${workspacePath}/${ITEMS_FOLDER}`);
       await window.electronAPI.writeFile(`${workspacePath}/${ITEMS_FOLDER}/${workItem.fileName}`, markdown);
-
-      if (isNewItem) {
-        addItem(workItem);
-      } else {
-        updateItem(workItem);
-      }
-
-      navigate('/workspace');
+      addItem(workItem);
+      showToast(`Created ${workItem.type} ${workItem.id}`, 'success');
+      // Navigate TO the item — autosave activates immediately from here
+      navigate(`/workspace/item/${newId}`, { replace: true });
     } catch (error) {
-      console.error('Failed to save item:', error);
-      alert('Failed to save work item');
+      console.error('Failed to create item:', error);
+      showToast('Failed to create work item', 'error');
     } finally {
-      setIsSaving(false);
+      setIsCreating(false);
     }
   };
 
@@ -149,9 +198,9 @@ export function WorkItemEditView() {
     setIsDeleting(false);
     
     if (success) {
-      navigate('/workspace');
+      navigate(-1);
     } else {
-      alert('Failed to delete item');
+      showToast('Failed to delete item', 'error');
       setDeleteConfirm(false);
     }
   };
@@ -197,13 +246,143 @@ export function WorkItemEditView() {
     }
   };
 
+  
+  const handleExtractTasks = async () => {
+    const apiKey = llmApiKeys?.[llmProvider];
+    if (!apiKey) return showToast('No LLM API key configured. Please configure it in Settings.', 'error');
+    
+    setIsExtracting(true);
+    try {
+      const systemPrompt = "You are an AI assistant. Extract actionable items from these meeting notes. Return ONLY a valid JSON array of objects with 'title' (short task title) and 'assignee' (username if clearly assigned). No markdown blocks around the JSON.";
+      const messages: LLMMessage[] = [{ role: 'user', content: formData.content || '' }];
+      
+      const response = await callLLM({ provider: llmProvider, apiKey, model: llmModel || undefined }, messages, systemPrompt);
+      
+      let extracted = [];
+      try {
+        let text = response.content.trim();
+        if (text.startsWith('```json')) text = text.replace(/```json/g, '');
+        text = text.replace(/```/g, '').trim();
+        extracted = JSON.parse(text);
+      } catch(e) {
+         console.error(e);
+         return showToast('Failed to parse AI response', 'error');
+      }
+      
+      if (!Array.isArray(extracted) || extracted.length === 0) {
+        return showToast('No actionable tasks found in the notes', 'info');
+      }
+      
+      // Show preview modal instead of immediately creating
+      setExtractedTasks(extracted.filter((t: any) => t.title).map((t: any) => ({
+        title: t.title,
+        assignee: t.assignee || '',
+        selected: true,
+      })));
+    } catch (error) {
+       console.error(error);
+       showToast('Failed to extract tasks. See console for details.', 'error');
+    } finally {
+       setIsExtracting(false);
+    }
+  };
+
+  const handleCreateExtractedTasks = async () => {
+    if (!extractedTasks || !workspacePath) return;
+    const selected = extractedTasks.filter(t => t.selected);
+    if (selected.length === 0) {
+      showToast('No tasks selected', 'info');
+      return;
+    }
+
+    let createdCount = 0;
+    for (const task of selected) {
+      const newItem: WorkItem = {
+        id: generateWorkItemId(items),
+        title: task.title,
+        type: 'Task',
+        status: config.statuses[0] || 'To Do',
+        assignee: task.assignee || '',
+        content: `Extracted from Meeting Note: ${formData.title}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        fileName: '',
+        parentId: existingItem?.id,
+        comments: [],
+        attachments: [],
+      };
+      newItem.fileName = `${newItem.id}.md`;
+      
+      const markdown = serializeMarkdownItem(newItem);
+      await window.electronAPI.writeFile(`${workspacePath}/items/${newItem.fileName}`, markdown);
+      addItem(newItem);
+      createdCount++;
+    }
+    showToast(`Created ${createdCount} tasks from meeting notes`, 'success');
+    setExtractedTasks(null);
+  };
+
+  const handleAddAttachment = async () => {
+    if (!workspacePath) return;
+    const filePath = await window.electronAPI.openFile();
+    if (!filePath) return;
+    
+    // Require saving the item first to have a valid ID directory
+    if (!existingItem) {
+      showToast('Please save this new item first before adding attachments.', 'info');
+      return;
+    }
+    
+    const fileNameMatch = filePath.match(/[^\\/]+$/);
+    let fileName = fileNameMatch ? fileNameMatch[0] : 'attachment.file';
+    // Handle duplicate filenames
+    const existingNames = (formData.attachments || []).map(a => (a.split(/[\\\/]/).pop() || '')); 
+    if (existingNames.includes(fileName)) {
+      const ext = fileName.includes('.') ? ('.'+fileName.split('.').pop()) : '';
+      const base = ext ? fileName.slice(0, -ext.length) : fileName;
+      let counter = 1;
+      while (existingNames.includes(`${base}-${counter}${ext}`)) counter++;
+      fileName = `${base}-${counter}${ext}`;
+    }
+    
+    const relativeDestPath = `attachments/${existingItem.id}/${fileName}`;
+    const absoluteDestPath = `${workspacePath}/.syncboard/${relativeDestPath}`;
+    
+    const success = await window.electronAPI.copyFile(filePath, absoluteDestPath);
+    if (success) {
+      const newAttachments = [...(formData.attachments || []), relativeDestPath];
+      setFormData({ ...formData, attachments: newAttachments });
+      // Trigger autosave
+      handleAutoSave({ ...formData, attachments: newAttachments });
+    } else {
+      showToast('Failed to copy attachment file', 'error');
+    }
+  };
+
+  const handleOpenAttachment = async (attachmentPath: string) => {
+    if (!workspacePath) return;
+    const absolutePath = `${workspacePath}/.syncboard/${attachmentPath}`;
+    await window.electronAPI.openPath(absolutePath);
+  };
+  
+  const handleRemoveAttachment = async (indexToRemove: number) => {
+    const removedPath = formData.attachments?.[indexToRemove];
+    const newAttachments = formData.attachments?.filter((_, i) => i !== indexToRemove) || [];
+    setFormData({ ...formData, attachments: newAttachments });
+    handleAutoSave({ ...formData, attachments: newAttachments });
+    // Delete the actual file from disk
+    if (removedPath && workspacePath) {
+      await window.electronAPI.deleteFile(`${workspacePath}/.syncboard/${removedPath}`);
+    }
+  };
+
   if (!formData.title && !isNewItem && !existingItem) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-500">Work item not found</p>
           <button
-            onClick={() => navigate('/workspace')}
+            onClick={() => navigate(-1)}
             className="mt-4 text-blue-600 hover:underline"
           >
             Back to Workspace
@@ -250,8 +429,26 @@ export function WorkItemEditView() {
         
         {/* Right: Auto-save indicator and Actions */}
         <div className="flex items-center gap-3">
-          {!isNewItem && <AutoSaveIndicator status={autoSaveStatus} lastSavedAt={lastSavedAt} error={autoSaveError} />}
-          
+          {!isNewItem && (
+            <AutoSaveIndicator
+              status={autoSaveStatus}
+              lastSavedAt={lastSavedAt}
+              error={autoSaveError}
+              canUndo={canUndo}
+              onUndo={handleUndo}
+            />
+          )}
+          {formData.type === 'Meeting Note' && !isNewItem && (
+            <button
+              onClick={handleExtractTasks}
+              disabled={isExtracting}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-all bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+            >
+              <Sparkles size={16} />
+              {isExtracting ? 'Extracting...' : 'Extract Tasks'}
+            </button>
+          )}
+
           {!isNewItem && (
             <button
               onClick={handleDelete}
@@ -265,14 +462,18 @@ export function WorkItemEditView() {
               {isDeleting ? 'Deleting...' : deleteConfirm ? 'Confirm Delete?' : 'Delete'}
             </button>
           )}
-          
-          <button
-            onClick={handleSave}
-            disabled={!formData.title || isSaving}
-            className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          >
-            {isSaving ? 'Saving...' : 'Save'}
-          </button>
+
+          {/* Only show Create button for new items — existing items autosave */}
+          {isNewItem && (
+            <button
+              onClick={handleCreate}
+              disabled={!formData.title || isCreating}
+              className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              title="Create this item. After creation, all edits save automatically."
+            >
+              {isCreating ? 'Creating…' : 'Create'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -283,7 +484,7 @@ export function WorkItemEditView() {
           <div className="max-w-4xl mx-auto px-6 py-8">
             {/* Back Link - Subtle */}
             <button
-              onClick={() => navigate('/workspace')}
+              onClick={() => navigate(-1)}
               className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 mb-8 transition-colors"
             >
               <ArrowLeft size={16} />
@@ -454,6 +655,54 @@ export function WorkItemEditView() {
             </div>
           </div>
 
+          
+          {/* Attachments */}
+          <div className="mb-12 border-t border-gray-100 pt-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Paperclip size={18} />
+                Attachments
+                {formData.attachments && formData.attachments.length > 0 && (
+                  <span className="text-gray-400 font-normal">({formData.attachments.length})</span>
+                )}
+              </h2>
+              <button
+                onClick={handleAddAttachment}
+                className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+              >
+                + Add File
+              </button>
+            </div>
+
+            {formData.attachments && formData.attachments.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {formData.attachments.map((attachment, index) => {
+                  const filename = attachment.split(/[\\/]/).pop() || attachment;
+                  return (
+                    <div key={index} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg group">
+                      <button 
+                        onClick={() => handleOpenAttachment(attachment)}
+                        className="flex items-center gap-3 text-gray-700 hover:text-blue-600 transition-colors text-left flex-1"
+                      >
+                        {getFileIcon(filename)}
+                        <span className="text-sm font-medium truncate max-w-md">{filename}</span>
+                      </button>
+                      <button
+                        onClick={() => handleRemoveAttachment(index)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-50 transition-all"
+                        title="Remove attachment"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 italic">No files attached yet</p>
+            )}
+          </div>
+
           {/* Metadata - Subtle Footer */}
           {!isNewItem && existingItem && (
             <div className="pt-8 border-t border-gray-100">
@@ -471,7 +720,7 @@ export function WorkItemEditView() {
             <div className="max-w-5xl mx-auto h-full flex flex-col">
               <div className="mb-4 flex items-center justify-between">
                 <button
-                  onClick={() => navigate('/workspace')}
+                  onClick={() => navigate(-1)}
                   className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 transition-colors"
                 >
                   <ArrowLeft size={16} />
@@ -510,6 +759,68 @@ Comment content..."
           </div>
         )}
       </div>
+
+      {/* Extraction Preview Modal */}
+      {extractedTasks && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Sparkles size={18} className="text-purple-600" />
+                Extracted Tasks ({extractedTasks.filter(t => t.selected).length}/{extractedTasks.length})
+              </h3>
+              <button onClick={() => setExtractedTasks(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4 space-y-2">
+              {extractedTasks.map((task, i) => (
+                <div key={i} className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${task.selected ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200 opacity-60'}`}>
+                  <input
+                    type="checkbox"
+                    checked={task.selected}
+                    onChange={() => {
+                      const updated = [...extractedTasks];
+                      updated[i] = { ...updated[i], selected: !updated[i].selected };
+                      setExtractedTasks(updated);
+                    }}
+                    className="mt-1 rounded"
+                  />
+                  <div className="flex-1 space-y-1">
+                    <input
+                      type="text"
+                      value={task.title}
+                      onChange={(e) => {
+                        const updated = [...extractedTasks];
+                        updated[i] = { ...updated[i], title: e.target.value };
+                        setExtractedTasks(updated);
+                      }}
+                      className="w-full text-sm font-medium bg-transparent border-none focus:outline-none focus:ring-0 p-0"
+                    />
+                    <input
+                      type="text"
+                      value={task.assignee || ''}
+                      onChange={(e) => {
+                        const updated = [...extractedTasks];
+                        updated[i] = { ...updated[i], assignee: e.target.value };
+                        setExtractedTasks(updated);
+                      }}
+                      placeholder="Assignee"
+                      className="w-full text-xs text-gray-500 bg-transparent border-none focus:outline-none focus:ring-0 p-0"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <button onClick={() => setExtractedTasks(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+              <button onClick={handleCreateExtractedTasks} className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                Create {extractedTasks.filter(t => t.selected).length} Tasks
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

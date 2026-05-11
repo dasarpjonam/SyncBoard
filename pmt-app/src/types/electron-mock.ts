@@ -1,11 +1,17 @@
 // Mock for browser environment
 if (!window.electronAPI) {
   console.log('[DEV MODE] Using electron API mock - auto-loading demo workspace');
-  
+
+  const MOCK_HOME = '/mock/home';
+
   window.electronAPI = {
     openDirectory: async () => {
       const mockPath = '/demo/syncboard-workspace';
-      // Auto-set in localStorage for dev convenience
+      localStorage.setItem('workspacePath', mockPath);
+      return mockPath;
+    },
+    openDirectoryPicker: async () => {
+      const mockPath = '/demo/syncboard-workspace';
       localStorage.setItem('workspacePath', mockPath);
       return mockPath;
     },
@@ -14,17 +20,15 @@ if (!window.electronAPI) {
       localStorage.setItem('workspacePath', path);
       return true;
     },
-    readDir: async (path, recursive) => {
-      // If reading items folder, return item files
+    readDir: async (path, _recursive) => {
       if (path.includes('/items')) {
         return ['ITEM-0001.md', 'ITEM-0002.md', 'ITEM-0003.md'];
       }
-      // Otherwise return workspace contents
-      return recursive ? ['items/ITEM-0001.md', 'items/ITEM-0002.md', 'items/ITEM-0003.md'] : ['items', 'config.yaml'];
+      return ['items', 'config.yaml'];
     },
     readFile: async (path) => {
       if (path.includes('config.yaml')) {
-        return `types: ['Task', 'Bug', 'Feature', 'Epic']\nstatuses: ['To Do', 'In Progress', 'In Review', 'Done']\nusers: ['Alice', 'Bob', 'Charlie']`;
+        return `types:\n  - Task\n  - Bug\n  - Feature\n  - Epic\n  - Meeting Note\nstatuses:\n  - To Do\n  - In Progress\n  - In Review\n  - Done\nusers:\n  - Alice\n  - Bob\n  - Charlie`;
       }
       if (path.includes('ITEM-0001.md')) {
         return `---\nid: ITEM-0001\ntitle: Design the application architecture\ntype: Task\nstatus: In Progress\nassignee: Alice\ncreatedAt: '2023-10-25T10:00:00.000Z'\nupdatedAt: '2023-10-26T12:00:00.000Z'\nfileName: ITEM-0001.md\n---\nWe need to design the core architecture for the new Syncboard application.`;
@@ -41,14 +45,51 @@ if (!window.electronAPI) {
     deleteFile: async () => true,
     ensureDir: async () => true,
     isDirectory: async () => false,
-    
+    openFile: async () => '/demo/mock-file.pdf',
+    openJsonFile: async () => {
+      return JSON.stringify([
+        { id: 'TODO-IMPORT-1', text: 'Imported todo example', done: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      ]);
+    },
+    copyFile: async () => true,
+    openPath: async () => true,
+
+    // Global personal storage (home directory) — backed by localStorage in dev
+    getHomePath: async () => MOCK_HOME,
+    readHomePath: async (relativePath: string) => {
+      return localStorage.getItem(`home_${relativePath}`) || null;
+    },
+    writeHomePath: async (relativePath: string, content: string) => {
+      localStorage.setItem(`home_${relativePath}`, content);
+      return true;
+    },
+    deleteHomePath: async (relativePath: string) => {
+      localStorage.removeItem(`home_${relativePath}`);
+      return true;
+    },
+    ensureHomePath: async () => true,
+    readHomeDir: async (relativePath: string) => {
+      const prefix = `home_${relativePath}/`;
+      const keys = Object.keys(localStorage).filter(k => k.startsWith(prefix));
+      return [...new Set(keys.map(k => k.replace(prefix, '').split('/')[0]))];
+    },
+
+    // App userData storage — backed by localStorage in dev
+    readUserData: async (filename: string) => {
+      return localStorage.getItem(`userData_${filename}`) || null;
+    },
+    writeUserData: async (filename: string, content: string) => {
+      localStorage.setItem(`userData_${filename}`, content);
+      return true;
+    },
+
     // Git integration
     gitGetUserInfo: async () => ({
       name: 'Demo User',
       email: 'demo@example.com',
       github: 'demouser'
     }),
-    
+
     // Authentication - persist mock state in localStorage for consistency
     authCheckWorkspaceAuth: async (workspacePath: string) => {
       const authKey = `mock_auth_${workspacePath}`;
@@ -58,35 +99,27 @@ if (!window.electronAPI) {
     },
     authSetWorkspacePassword: async (workspacePath: string, passwordHash: string, salt: string) => {
       const authKey = `mock_auth_${workspacePath}`;
-      localStorage.setItem(authKey, JSON.stringify({
-        enabled: true,
-        requirePassword: true,
-        passwordHash,
-        salt
-      }));
+      localStorage.setItem(authKey, JSON.stringify({ enabled: true, requirePassword: true, passwordHash, salt }));
       return true;
     },
     authVerifyWorkspacePassword: async (workspacePath: string, passwordHash: string) => {
       const authKey = `mock_auth_${workspacePath}`;
       const authData = localStorage.getItem(authKey);
       if (!authData) return false;
-      const parsed = JSON.parse(authData);
-      return parsed.passwordHash === passwordHash;
+      return JSON.parse(authData).passwordHash === passwordHash;
     },
     authGetPasswordSalt: async (workspacePath: string) => {
       const authKey = `mock_auth_${workspacePath}`;
       const authData = localStorage.getItem(authKey);
       if (!authData) return null;
-      const parsed = JSON.parse(authData);
-      return parsed.salt || null;
+      return JSON.parse(authData).salt || null;
     },
     authDisableWorkspaceAuth: async (workspacePath: string) => {
-      const authKey = `mock_auth_${workspacePath}`;
-      localStorage.removeItem(authKey);
+      localStorage.removeItem(`mock_auth_${workspacePath}`);
       return true;
     },
   };
-  
+
   // Auto-initialize workspace in dev mode
   if (!localStorage.getItem('workspacePath')) {
     console.log('[DEV MODE] No workspace found - setting demo workspace');

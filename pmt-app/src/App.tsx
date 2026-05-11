@@ -5,6 +5,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { WorkspaceView } from './views/WorkspaceView';
 import { WorkItemEditView } from './views/WorkItemEditView';
 import { SettingsView } from './views/SettingsView';
+import { PersonalView } from './views/PersonalView';
 import { LockScreen } from './components/LockScreen';
 import { useWorkspace } from './store/WorkspaceContext';
 import { parseMarkdownItem } from './lib/markdown';
@@ -30,7 +31,7 @@ function ChatWithContext() {
 
 function AppContent() {
   const { 
-    workspacePath, setItems, loadWorkspace, 
+    workspacePath, setItems, setPersonalNotes, currentUser, loadWorkspace, 
     isLocked, unlockWorkspace, checkWorkspaceAuth 
   } = useWorkspace();
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
@@ -111,8 +112,25 @@ function AppContent() {
       }
     };
 
+    const loadPersonalNotes = async () => {
+      if (!currentUser) {
+        setPersonalNotes([]);
+        return;
+      }
+      
+      try {
+        // Load notes from global home path instead of workspace path
+        const { loadNotes } = await import('./lib/personal-store');
+        const notes = await loadNotes(currentUser);
+        setPersonalNotes(notes);
+      } catch (e) {
+        console.error('[App] Failed to load personal notes', e);
+      }
+    };
+
     loadItems();
-  }, [workspacePath, setItems]);
+    loadPersonalNotes();
+  }, [workspacePath, currentUser, setItems, setPersonalNotes]);
 
   const handleUnlock = (user: User) => {
     unlockWorkspace(user);
@@ -141,6 +159,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<WorkspaceView />} />
             <Route path="/workspace" element={<WorkspaceView />} />
+            <Route path="/personal" element={<PersonalView />} />
             <Route path="/workspace/item/:itemId" element={<WorkItemEditView />} />
             <Route path="/settings" element={<SettingsView />} />
           </Routes>

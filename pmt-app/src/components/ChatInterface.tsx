@@ -17,23 +17,32 @@ function nextMessageId(): string {
 
 /**
  * Generate contextual follow-up suggestions based on the last tool that ran.
+ * Returns natural language prompts rather than raw slash commands.
  */
-function getFollowUps(lastToolName?: string): string[] {
+function getFollowUps(lastToolName?: string, lastToolResult?: any): string[] {
   switch (lastToolName) {
     case 'search_items':
-      return ['Summarize these results', '/summary', 'Show blocked items'];
+      return ['Show me the details of the first result', 'Update the status of these items', 'Who is assigned to these?'];
     case 'get_project_summary':
-      return ['Show items In Progress', 'List all bugs', 'Who has the most tasks?'];
+      return ['Which items are blocked?', 'Show me everything In Progress', 'Who has the most work assigned?'];
     case 'create_work_item':
-      return ['/summary', 'Create another item', 'Show all my items'];
+      return ['Add a comment to this item', 'Assign it to someone', 'Create a related task'];
     case 'update_work_item':
-      return ['/summary', 'Show updated item'];
+      return ['Show me the updated item', 'Move it to the next status', 'Add a comment with the reason for this change'];
     case 'list_items':
-      return ['Summarize these', '/summary', 'Create a new task'];
+      return ['Show me the details of one of these', 'Which of these are blocked?', 'Summarize the status of this work'];
     case 'get_item_detail':
-      return ['Update this item', 'Show children', '/summary'];
+      return ['Update the status of this item', 'Show all child tasks', 'Add a comment to this item'];
+    case 'create_personal_note':
+      return ['Process this note for tasks', 'Add more context to the note', 'Promote it to the board'];
+    case 'update_personal_note':
+      return ['Extract tasks from this note', 'What are the key decisions here?'];
     default:
-      return ['/summary', '/search', '/list status:In Progress'];
+      return [
+        'What is the status of the project?',
+        'Show me all In Progress items',
+        'Which tasks are assigned to me?',
+      ];
   }
 }
 
@@ -43,9 +52,12 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ currentWorkItem }: ChatInterfaceProps = {}) {
   const {
-    items, config, workspacePath,
+    items, personalNotes, config, workspacePath, currentUser,
     apiKey, llmProvider, llmApiKeys, llmModel,
-    addItem, updateItem, deleteItem
+    addItem, updateItem, deleteItem,
+    addPersonalNote, updatePersonalNote, deletePersonalNote,
+    todos, addTodo, updateTodo, deleteTodo, toggleTodoDone,
+    setCurrentUser, setLLMProvider, setLLMModel, setLLMApiKey,
   } = useWorkspace();
 
   const navigate = useNavigate();
@@ -62,16 +74,46 @@ export function ChatInterface({ currentWorkItem }: ChatInterfaceProps = {}) {
   const toolRegistry = useMemo(() => createToolRegistry(), []);
   const slashCommands = useMemo(() => getAvailableCommands(toolRegistry), [toolRegistry]);
 
+  // Get available users (from config.users or as empty array)
+  const availableUsers = useMemo(() => {
+    const users = config.users || [];
+    return users.length > 0 ? users : currentUser ? [currentUser] : [];
+  }, [config.users, currentUser]);
+
   // Build tool context from current workspace state
   const buildToolContext = useCallback((): ToolContext => ({
     items,
+    personalNotes,
     config,
     workspacePath: workspacePath || '',
+    currentUser,
+    currentWorkItem,
+    // Settings
+    llmProvider,
+    llmModel,
+    llmApiKeys,
+    availableUsers,
+    setCurrentUser,
+    setLLMProvider,
+    setLLMModel,
+    setApiKey: setLLMApiKey,
+    // Work items
     addItem,
     updateItem,
     deleteItem,
+    // Personal notes
+    addPersonalNote,
+    updatePersonalNote,
+    deletePersonalNote,
+    // Personal todos
+    todos,
+    addTodo,
+    updateTodo,
+    deleteTodo,
+    toggleTodoDone,
+    // Electron API
     electronAPI: window.electronAPI,
-  }), [items, config, workspacePath, addItem, updateItem, deleteItem]);
+  }), [items, personalNotes, config, workspacePath, currentUser, currentWorkItem, llmProvider, llmModel, llmApiKeys, availableUsers, setCurrentUser, setLLMProvider, setLLMModel, setLLMApiKey, addItem, updateItem, deleteItem, addPersonalNote, updatePersonalNote, deletePersonalNote, todos, addTodo, updateTodo, deleteTodo, toggleTodoDone]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -281,7 +323,9 @@ TOOL USAGE GUIDELINES:
 - Use list_items to filter items by status, type, or assignee.
 - Use create_work_item ONLY when the user explicitly asks to CREATE or ADD a new item.
 - Use update_work_item when the user wants to EDIT, UPDATE, MODIFY, CHANGE, or REASSIGN an existing item.
+- Use create_personal_note and update_personal_note when the user explicitly asks to create or update their Personal Notes in "My Space".
 - When referencing items by partial ID (e.g., "ending 42" or "42"), search for them first.
+- The search_items and get_item_detail tools ALSO search through the user's personal notes.
 - Auto-correct status, type, and assignee to match the available values above.
 - Only change the fields the user explicitly mentions when updating.
 
@@ -405,16 +449,25 @@ Always be concise and helpful. Reference item IDs in your responses.`;
 
       <div className="flex-grow overflow-y-auto p-3 flex flex-col gap-3">
         {messages.length === 0 && (
-          <div className="text-gray-400 text-sm text-center mt-10 space-y-3">
-            <div>Ask me anything about your project!</div>
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {slashCommands.map(cmd => (
+          <div className="text-gray-400 text-sm text-center mt-8 space-y-4 px-2">
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Ask about your workspace, manage tasks, or work with your personal notes.
+            </p>
+            <div className="text-left space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1">Try asking</p>
+              {[
+                'What is the overall status of the project?',
+                'Show me everything assigned to me',
+                'Which items are In Progress?',
+                'Create a personal note about today\'s standup',
+                'Who has the most tasks assigned?',
+              ].map(prompt => (
                 <button
-                  key={cmd.name}
-                  onClick={() => handleSendMessage(`/${cmd.name} `)}
-                  className="text-[11px] px-2 py-1 bg-gray-50 border border-gray-200 rounded text-gray-500 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
+                  key={prompt}
+                  onClick={() => handleSendMessage(prompt)}
+                  className="w-full text-left text-xs px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors leading-relaxed"
                 >
-                  /{cmd.name}
+                  {prompt}
                 </button>
               ))}
             </div>
