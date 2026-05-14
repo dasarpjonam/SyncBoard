@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Typography, Box, Tooltip, useMediaQuery, useTheme } from '@mui/material';
+import { Drawer, List, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Typography, Box, Tooltip, useMediaQuery, useTheme, Dialog, DialogTitle, DialogContent, DialogContentText, TextField, DialogActions, Button } from '@mui/material';
 import { LayoutDashboard, Settings, ChevronLeft, ChevronRight, Lock, User, FolderPlus } from 'lucide-react';
 import { useWorkspace } from '../store/WorkspaceContext';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
@@ -24,6 +24,7 @@ export function Sidebar() {
     removeFromRecentWorkspaces,
     isDirty,
     setIsDirty,
+    addUserToWorkspace,
   } = useWorkspace();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -56,13 +57,35 @@ export function Sidebar() {
     await removeFromRecentWorkspaces(path);
   };
 
+  const [newWorkspaceDialogOpen, setNewWorkspaceDialogOpen] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [parentPathForNewWorkspace, setParentPathForNewWorkspace] = useState('');
+
   const handleCreateNewWorkspace = async () => {
-    const path = await window.electronAPI.openDirectory();
-    if (path) {
-      const name = getBasename(path);
-      await addToRecentWorkspaces(path, name);
-      await handleSwitchWorkspace(path);
+    const parentPath = await window.electronAPI.openDirectory();
+    if (!parentPath) return;
+
+    setParentPathForNewWorkspace(parentPath);
+    setNewWorkspaceName('');
+    setNewWorkspaceDialogOpen(true);
+  };
+
+  const handleConfirmNewWorkspace = async () => {
+    if (!newWorkspaceName.trim()) return;
+    const name = newWorkspaceName.trim();
+    setNewWorkspaceDialogOpen(false);
+
+    const separator = parentPathForNewWorkspace.includes('\\') ? '\\' : '/';
+    const newWorkspacePath = `${parentPathForNewWorkspace}${separator}${name}`;
+    
+    const created = await window.electronAPI.ensureDir(newWorkspacePath);
+    if (!created) {
+      alert("Failed to create workspace directory. It might already exist or lack permissions.");
+      return;
     }
+
+    await addToRecentWorkspaces(newWorkspacePath, name);
+    await handleSwitchWorkspace(newWorkspacePath);
   };
 
   const toggleCollapse = () => {
@@ -77,36 +100,18 @@ export function Sidebar() {
 
   const drawerContent = (
     <>
-      {/* Header */}
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 64 }}>
-        {!collapsed && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <img src="/icon.svg" alt="Logo" style={{ width: 24, height: 24 }} />
-            <Typography variant="h6" fontWeight="bold">
-              Syncboard
-            </Typography>
-          </Box>
-        )}
-        {collapsed && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
-            <img src="/icon.svg" alt="Logo" style={{ width: 24, height: 24 }} />
-          </Box>
-        )}
+      {/* Removed Header per user request */}
+
+      {/* User Selector - show available users or allow adding */}
+      <Box sx={{ p: 1 }}>
+        <UserSelector
+          currentUser={currentUser}
+          availableUsers={config.users || []}
+          onUserChange={setCurrentUser}
+          onAddUser={addUserToWorkspace}
+          collapsed={collapsed}
+        />
       </Box>
-
-      <Divider sx={{ borderColor: '#374151' }} />
-
-      {/* User Selector - show available users */}
-      {config.users && config.users.length > 0 && (
-        <Box sx={{ p: 1 }}>
-          <UserSelector
-            currentUser={currentUser}
-            availableUsers={config.users}
-            onUserChange={setCurrentUser}
-            collapsed={collapsed}
-          />
-        </Box>
-      )}
 
       <Divider sx={{ borderColor: '#374151' }} />
 
@@ -301,13 +306,45 @@ export function Sidebar() {
               backgroundColor: '#1f2937',
               color: '#ffffff',
               transition: 'width 0.3s ease',
-              overflowX: 'hidden',
+              overflow: 'visible',
             },
           }}
         >
           {drawerContent}
         </Drawer>
       )}
+
+      {/* New Workspace Dialog */}
+      <Dialog open={newWorkspaceDialogOpen} onClose={() => setNewWorkspaceDialogOpen(false)}>
+        <DialogTitle>Create New Workspace</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Please enter a name for the new workspace. A folder with this name will be created inside {parentPathForNewWorkspace}.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Workspace Name"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={newWorkspaceName}
+            onChange={(e) => setNewWorkspaceName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleConfirmNewWorkspace();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewWorkspaceDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirmNewWorkspace} variant="contained" color="primary" disabled={!newWorkspaceName.trim()}>
+            Create
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }
