@@ -7,13 +7,13 @@ import { ListSection } from '../components/ListSection';
 import { TableSection } from '../components/TableSection';
 import { serializeMarkdownItem } from '../lib/markdown';
 import { filterWithAncestors } from '../lib/hierarchy';
-import { LayoutDashboard, List, Table as TableIcon, Search, Filter, ChevronDown, X, FolderOpen } from 'lucide-react';
+import { LayoutDashboard, List, Table as TableIcon, Search, Filter, ChevronDown, X, FolderOpen, User } from 'lucide-react';
 
 type ViewMode = 'board' | 'list' | 'table';
 
 export function WorkspaceView() {
   const navigate = useNavigate();
-  const { itemsTree, config, workspacePath, updateItem, addItem, currentUser, setCurrentUser, loadWorkspace } = useWorkspace();
+  const { itemsTree, config, workspacePath, updateItem, addItem, currentUser, setCurrentUser, loadWorkspace, addUserToWorkspace } = useWorkspace();
   
   console.log('[WorkspaceView] Rendering - path:', workspacePath, 'items:', itemsTree.length);
   
@@ -28,6 +28,37 @@ export function WorkspaceView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showTypeFilter, setShowTypeFilter] = useState(false);
   const [showStatusFilter, setShowStatusFilter] = useState(false);
+
+  // New Workspace Dialog State
+  const [newWorkspaceDialogOpen, setNewWorkspaceDialogOpen] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [parentPathForNewWorkspace, setParentPathForNewWorkspace] = useState('');
+
+  const handleCreateNewWorkspace = async () => {
+    const parentPath = await window.electronAPI.openDirectory();
+    if (!parentPath) return;
+
+    setParentPathForNewWorkspace(parentPath);
+    setNewWorkspaceName('');
+    setNewWorkspaceDialogOpen(true);
+  };
+
+  const handleConfirmNewWorkspace = async () => {
+    if (!newWorkspaceName.trim()) return;
+    const name = newWorkspaceName.trim();
+    setNewWorkspaceDialogOpen(false);
+
+    const separator = parentPathForNewWorkspace.includes('\\') ? '\\' : '/';
+    const newWorkspacePath = `${parentPathForNewWorkspace}${separator}${name}`;
+    
+    const created = await window.electronAPI.ensureDir(newWorkspacePath);
+    if (!created) {
+      alert("Failed to create workspace directory. It might already exist or lack permissions.");
+      return;
+    }
+
+    await loadWorkspace(newWorkspacePath);
+  };
 
   // Persist view mode
   useEffect(() => {
@@ -105,17 +136,25 @@ export function WorkspaceView() {
           <p className="text-gray-600 mb-6">
             Select or create a workspace folder to get started with managing your work items.
           </p>
-          <button
-            onClick={async () => {
-              const path = await window.electronAPI.openDirectory();
-              if (path) {
-                await loadWorkspace(path);
-              }
-            }}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            Open Workspace Folder
-          </button>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleCreateNewWorkspace}
+              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+            >
+              Create New Workspace
+            </button>
+            <button
+              onClick={async () => {
+                const path = await window.electronAPI.openDirectory();
+                if (path) {
+                  await loadWorkspace(path);
+                }
+              }}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              Open Existing Workspace
+            </button>
+          </div>
           <p className="text-sm text-gray-500 mt-4">
             Or use the folder icon in the sidebar to select a workspace
           </p>
@@ -124,8 +163,26 @@ export function WorkspaceView() {
     );
   }
 
+  const isGuest = currentUser && config.users && !config.users.includes(currentUser);
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {/* Join Workspace Banner */}
+      {isGuest && (
+        <div className="bg-blue-50 border-b border-blue-100 p-3 flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 text-blue-800 text-sm">
+            <User size={16} className="flex-shrink-0" />
+            <span>Your user (<b>{currentUser}</b>) is not part of this workspace.</span>
+          </div>
+          <button 
+            onClick={() => addUserToWorkspace(currentUser)} 
+            className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors whitespace-nowrap"
+          >
+            Join Workspace
+          </button>
+        </div>
+      )}
+
       {/* Header with filters and view toggle */}
       <div className="bg-white border-b p-3 md:p-4 flex-shrink-0">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 md:gap-0 mb-3 md:mb-4">
@@ -276,6 +333,45 @@ export function WorkspaceView() {
           />
         )}
       </div>
+
+      {newWorkspaceDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 mx-4">
+            <h3 className="text-xl font-bold mb-2">Create New Workspace</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Please enter a name for the new workspace. A folder with this name will be created inside: <br/>
+              <span className="font-mono text-xs bg-gray-100 p-1 rounded mt-1 block break-all">{parentPathForNewWorkspace}</span>
+            </p>
+            <input
+              autoFocus
+              type="text"
+              value={newWorkspaceName}
+              onChange={(e) => setNewWorkspaceName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConfirmNewWorkspace();
+                if (e.key === 'Escape') setNewWorkspaceDialogOpen(false);
+              }}
+              placeholder="Workspace Name"
+              className="w-full p-2 border rounded mb-4 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setNewWorkspaceDialogOpen(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmNewWorkspace}
+                disabled={!newWorkspaceName.trim()}
+                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

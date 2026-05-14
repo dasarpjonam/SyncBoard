@@ -6,6 +6,7 @@ interface UserSelectorProps {
   currentUser: string | null;
   availableUsers: string[];
   onUserChange: (user: string) => Promise<void>;
+  onAddUser: (user: string) => Promise<void>;
   collapsed?: boolean;
 }
 
@@ -13,9 +14,12 @@ export function UserSelector({
   currentUser,
   availableUsers,
   onUserChange,
+  onAddUser,
   collapsed = false,
 }: UserSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -36,11 +40,18 @@ export function UserSelector({
     setOpen(false);
   };
 
-  if (availableUsers.length === 0) {
-    return null;
-  }
+  const handleAddUserSubmit = async () => {
+    if (newUserName.trim()) {
+      await onAddUser(newUserName.trim());
+      await onUserChange(newUserName.trim());
+    }
+    setIsAdding(false);
+    setNewUserName('');
+    setOpen(false);
+  };
 
   const displayUser = currentUser || 'Select user';
+  const isGuest = currentUser && !availableUsers.includes(currentUser);
 
   return (
     <div ref={containerRef} className="relative">
@@ -81,6 +92,17 @@ export function UserSelector({
         >
           {/* User List */}
           <div className="overflow-y-auto flex-1 py-1">
+            {isGuest && (
+              <button
+                onClick={() => handleSelectUser(currentUser)}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors bg-blue-600/20 text-blue-300"
+              >
+                <User size={14} className="flex-shrink-0" />
+                <span className="text-sm font-medium truncate">{currentUser} <span className="opacity-70">(Guest)</span></span>
+                <span className="ml-auto text-xs font-bold">✓</span>
+              </button>
+            )}
+            
             {availableUsers.map(user => {
               const isCurrent = user === currentUser;
               return (
@@ -99,6 +121,36 @@ export function UserSelector({
                 </button>
               );
             })}
+            
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 0.5 }} />
+            
+            {isAdding ? (
+              <div className="px-3 py-2 flex items-center gap-2">
+                <input 
+                  autoFocus
+                  type="text"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddUserSubmit();
+                    if (e.key === 'Escape') {
+                      setIsAdding(false);
+                      setNewUserName('');
+                    }
+                  }}
+                  className="w-full bg-black/30 border border-white/20 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
+                  placeholder="Username..."
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAdding(true)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-blue-400 hover:bg-white/5 hover:text-blue-300 transition-colors"
+              >
+                <span className="text-lg leading-none">+</span>
+                <span className="text-sm font-medium">Add user</span>
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -73,6 +73,7 @@ interface WorkspaceContextProps {
   unlockWorkspace: (user: User) => void;
   lockWorkspace: () => void;
   checkWorkspaceAuth: (path: string) => Promise<{ enabled: boolean; requirePassword: boolean } | null>;
+  addUserToWorkspace: (username: string) => Promise<void>;
 }
 
 const DEFAULT_CONFIG: WorkspaceConfig = {
@@ -558,6 +559,15 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const addUserToWorkspace = async (username: string) => {
+    if (!username.trim() || config.users.includes(username.trim())) return;
+    const newConfig = {
+      ...config,
+      users: [...(config.users || []), username.trim()]
+    };
+    await saveConfig(newConfig);
+  };
+
   const loadWorkspace = async (path: string) => {
     try {
       await window.electronAPI.setWorkspace(path);
@@ -567,30 +577,44 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
       const name = getBasename(path);
       await addToRecentWorkspaces(path, name);
 
+      let loadedConfig = { ...DEFAULT_CONFIG };
+
       // Load config
       const configContent = await window.electronAPI.readFile(`${path}/config.yaml`);
       if (configContent) {
         try {
-          const loadedConfig = yaml.load(configContent) as WorkspaceConfig;
-          setConfig({ ...DEFAULT_CONFIG, ...loadedConfig });
+          const parsedConfig = yaml.load(configContent) as WorkspaceConfig;
+          loadedConfig = { ...DEFAULT_CONFIG, ...parsedConfig };
+          setConfig(loadedConfig);
         } catch (e) {
           console.error('Invalid config.yaml', e);
-          setConfig(DEFAULT_CONFIG);
+          setConfig(loadedConfig);
         }
       } else {
         // Create default config
-        await window.electronAPI.writeFile(`${path}/config.yaml`, yaml.dump(DEFAULT_CONFIG));
-        setConfig(DEFAULT_CONFIG);
+        try {
+          const gitUser = await window.electronAPI.gitGetUserInfo();
+          if (gitUser && gitUser.name) {
+            loadedConfig.users = [gitUser.name];
+          }
+        } catch(e) {
+          console.error('Failed to auto detect user', e);
+        }
+        await window.electronAPI.writeFile(`${path}/config.yaml`, yaml.dump(loadedConfig));
+        setConfig(loadedConfig);
       }
 
       // Restore lastUser from registry if available
       const entry = recentWorkspaces.find(e => e.path === path);
       if (entry?.lastUser && !currentUser) {
         // Check if the user exists in config
-        const configUsers = config.users || [];
+        const configUsers = loadedConfig.users || [];
         if (configUsers.includes(entry.lastUser)) {
           setCurrentUser(entry.lastUser);
         }
+      } else if (!currentUser && !configContent && loadedConfig.users?.length > 0) {
+        // Auto set currentUser if it's a new workspace and we detected a user
+        setCurrentUser(loadedConfig.users[0]);
       }
 
       // We won't load items here directly to avoid circular deps with parsing, we will let the app root do it
@@ -652,7 +676,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
       setPersonalNotes, addPersonalNote, updatePersonalNote, deletePersonalNote,
       setConfig, setApiKey, setCurrentUser, saveConfig, loadWorkspace,
       setLLMProvider, setLLMApiKey, setLLMModel,
-      unlockWorkspace, lockWorkspace, checkWorkspaceAuth
+      unlockWorkspace, lockWorkspace, checkWorkspaceAuth, addUserToWorkspace
     }}>
       {children}
     </WorkspaceContext.Provider>
