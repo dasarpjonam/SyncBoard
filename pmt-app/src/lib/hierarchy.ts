@@ -72,7 +72,8 @@ export function getAllItems(tree: WorkItem[]): WorkItem[] {
  * Check if an item can have children
  * Any item can have children regardless of type
  */
-export function canHaveChildren(item: WorkItem): boolean {
+export function canHaveChildren(_item?: WorkItem): boolean {
+  void _item;
   return true;
 }
 
@@ -80,7 +81,8 @@ export function canHaveChildren(item: WorkItem): boolean {
  * Get the allowed child types for a parent item
  * No type restrictions - any type can be a child of any type
  */
-export function getAllowedChildTypes(parent: WorkItem): string[] {
+export function getAllowedChildTypes(_parent?: WorkItem): string[] {
+  void _parent;
   return [];
 }
 
@@ -126,11 +128,46 @@ export function getItemLevel(item: WorkItem, allItems: WorkItem[]): number {
  */
 export function getAncestors(item: WorkItem, allItems: WorkItem[]): WorkItem[] {
   const ancestors: WorkItem[] = [];
+  const visited = new Set<string>();
   let current = item;
   
   while (current.parentId) {
+    if (visited.has(current.id)) {
+      break; // Prevent infinite loop in case of circular references
+    }
+    visited.add(current.id);
+
     const parent = allItems.find(i => i.id === current.parentId);
     if (!parent) break;
+
+    // If we've already visited the parent (and it's not the first step of a self-reference), break before adding
+    // Wait, if A -> B -> A.
+    // Iter 1: current=A. visited={A}. parent=B. ancestors=[B]. current=B.
+    // Iter 2: current=B. visited={A,B}. parent=A.
+    // If we push A here, ancestors=[A, B].
+    // Iter 3: current=A. visited has A. Break.
+    // ancestors of A are [A, B] ? That doesn't make sense. It should be just [B].
+
+    // Iter 1: current=A. visited={A}. parent=B.
+    // Is parent in visited? No. ancestors=[B]. current=B.
+    // Iter 2: current=B. visited={A,B}. parent=A.
+    // Is parent in visited? Yes. Break.
+    // ancestors = [B].
+
+    // What if self reference? A -> A.
+    // Iter 1: current=A. visited={A}. parent=A.
+    // Is parent in visited? Yes. Break.
+    // ancestors = []. But wait, the test expects [A] for A -> A?
+    // Wait, if an item is its own parent, is the ancestor array empty or [A]?
+    // If A -> A, A is its own parent. So A should be in ancestors.
+
+    if (visited.has(parent.id)) {
+       if (parent.id === item.id && ancestors.length === 0) {
+           ancestors.unshift(parent);
+       }
+       break;
+    }
+
     ancestors.unshift(parent);
     current = parent;
   }
